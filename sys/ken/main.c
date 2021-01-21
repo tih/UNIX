@@ -73,6 +73,11 @@ main()
 		UBMAP->r[i+1] = 0;
 	}
 	printf("mem = %l\n", maxmem*5/16);
+	printf("RESTRICTED RIGHTS\n\n");
+	printf("Use, duplication or disclosure is subject to\n");
+	printf("restrictions stated in Contract with Western\n");
+	printf("Electric Company, Inc.\n");
+
 	maxmem = min(maxmem, MAXMEM);
 	mfree(swapmap, nswap, swplo);
 
