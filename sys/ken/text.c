@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 #include "../param.h"
@@ -28,9 +29,7 @@ int *p;
 	rp = p;
 	if(os == 0)
 		os = rp->p_size;
-	a = malloc(swapmap, (rp->p_size+7)/8);
-	if(a == NULL)
-		panic("out of swap space");
+	a = swalloc((rp->p_size+7)/8);
 	xccdec(rp->p_textp);
 	rp->p_flag =| SLOCK;
 	if(swap(a, rp->p_addr, os, 0))
@@ -57,16 +56,9 @@ xfree()
 	if((xp=u.u_procp->p_textp) != NULL) {
 		u.u_procp->p_textp = NULL;
 		xccdec(xp);
-		if(--xp->x_count == 0) {
-			ip = xp->x_iptr;
-			if((ip->i_mode&ISVTX) == 0) {
-				xp->x_iptr = NULL;
-				mfree(swapmap, (xp->x_size+7)/8, xp->x_daddr);
-				ip->i_flag =& ~ITEXT;
-				iput(ip);
-			}
+		--xp->x_count;
+		xpurge(xp,ISVTX);
 		}
-	}
 }
 
 /*
@@ -111,8 +103,7 @@ int *ip;
 	xp->x_iptr = ip;
 	ts = ((u.u_arg[1]+63)>>6) & 01777;
 	xp->x_size = ts;
-	if((xp->x_daddr = malloc(swapmap, (ts+7)/8)) == NULL)
-		panic("out of swap space");
+	xp->x_daddr = swalloc((ts+7)/8);
 	expand(USIZE+ts);
 	estabur(0, ts, 0, 0);
 	u.u_count = u.u_arg[1];
@@ -153,4 +144,37 @@ int *xp;
 	if((rp=xp)!=NULL && rp->x_ccount!=0)
 		if(--rp->x_ccount == 0)
 			mfree(coremap, rp->x_size, rp->x_caddr);
+}
+
+swalloc(n)
+{
+register int i;
+register struct text *xp;
+
+if (i=malloc(swapmap,n))
+	return(i);
+printf("reclaiming swap space\n");
+for (xp = &text; xp < text+NTEXT; ++xp)
+	if (xp->x_iptr)
+		xpurge(xp,0);			/* purge it */
+if((i = malloc(swapmap,n)) == NULL)
+	panic("out of swap space");
+return(i);
+}
+
+xpurge(x,flag) char *x;
+{
+register *ip;
+register char *xp;
+
+xp = x;
+if(xp->x_count == 0) {
+	ip = xp->x_iptr;
+	if((ip->i_mode&flag) == 0) {
+		xp->x_iptr = NULL;
+		mfree(swapmap, (xp->x_size+7)/8, xp->x_daddr);
+		ip->i_flag =& ~ITEXT;
+		iput(ip);
+		}
+	}
 }

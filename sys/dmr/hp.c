@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1975 Bell Telephone Laboratories Inc
  */
 
 /*
@@ -37,7 +38,6 @@ struct {
 	int	hper3;	/* Error register 3 */
 	int	hppos;	/* Burst error bit position */
 	int	hppat;	/* Burst error bit pattern */
-	int	hpbae;	/* 11/70 bus extension */
 };
 
 #define	HPADDR	0176700
@@ -48,7 +48,7 @@ struct {
 	int	cyloff;
 } hp_sizes[] {
 	9614,	0,		/* cyl 0 thru 23 */
-				/* cyl 24 thru 43 available */
+				/*cyl 24 thru 43 available */
 	-1,	44,		/* cyl 44 thru 200 */
 	-1,	201,		/* cyl 201 thru 357 */
 	20900,	358,		/* cyl 358 thru 407 */
@@ -155,7 +155,7 @@ hpstart()
 	hptab.d_active++;
 	HPADDR->hpcs2 = bp->b_dev.d_minor >> 3;
 	HPADDR->hpca = bp->cylin;
-	rhstart(bp, &HPADDR->hpda, bp->trksec, &HPADDR->hpbae);
+	rhstart(bp, &HPADDR->hpda, bp->trksec);
 }
 
 hpintr()
@@ -168,7 +168,7 @@ hpintr()
 	bp = hptab.d_actf;
 	hptab.d_active = 0;
 	if (HPADDR->hpcs1 & ERR) {		/* error bit */
-		deverror(bp, HPADDR->hpcs2, 0);
+		deverror(bp, HPADDR->hpcs2);
 		if(HPADDR->hper1 & (DU|DTE|OPI)) {
 			HPADDR->hpcs2 = CLR;
 			HPADDR->hpcs1 = RECAL|GO;

@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 #include "../param.h"
@@ -318,8 +319,6 @@ struct buf *bp;
 	register struct buf *rbp;
 
 	rbp = bp;
-	if(rbp->b_flags&B_MAP)
-		mapfree(rbp);
 	rbp->b_flags =| B_DONE;
 	if (rbp->b_flags&B_ASYNC)
 		brelse(rbp);
@@ -414,13 +413,14 @@ int *devloc;
 
 /*
  * startup routine for RH controllers.
+ * It is not set up for 11/70 22-bit addresses.
  */
 #define	RHWCOM	060
 #define	RHRCOM	070
 
-rhstart(bp, devloc, devblk, abae)
+rhstart(bp, devloc, devblk)
 struct buf *bp;
-int *devloc, *abae;
+int *devloc;
 {
 	register int *dp;
 	register struct buf *rbp;
@@ -428,8 +428,6 @@ int *devloc, *abae;
 
 	dp = devloc;
 	rbp = bp;
-	if(cputype == 70)
-		*abae = rbp->b_xmem;
 	*dp = devblk;			/* block address */
 	*--dp = rbp->b_addr;		/* buffer address */
 	*--dp = rbp->b_wcount;		/* word count */
@@ -439,50 +437,6 @@ int *devloc, *abae;
 		com =| RHRCOM; else
 		com =| RHWCOM;
 	*--dp = com;
-}
-
-/*
- * 11/70 routine to allocate the
- * UNIBUS map and initialize for
- * a unibus device.
- * The code here and in
- * rhstart assumes that an rh on an 11/70
- * is an rh70 and contains 22 bit addressing.
- */
-int	maplock;
-mapalloc(abp)
-struct buf *abp;
-{
-	register i, a;
-	register struct buf *bp;
-
-	if(cputype != 70)
-		return;
-	spl6();
-	while(maplock&B_BUSY) {
-		maplock =| B_WANTED;
-		sleep(&maplock, PSWP);
-	}
-	maplock =| B_BUSY;
-	spl0();
-	bp = abp;
-	bp->b_flags =| B_MAP;
-	a = bp->b_xmem;
-	for(i=16; i<32; i=+2)
-		UBMAP->r[i+1] = a;
-	for(a++; i<48; i=+2)
-		UBMAP->r[i+1] = a;
-	bp->b_xmem = 1;
-}
-
-mapfree(bp)
-struct buf *bp;
-{
-
-	bp->b_flags =& ~B_MAP;
-	if(maplock&B_WANTED)
-		wakeup(&maplock);
-	maplock = 0;
 }
 
 /*
@@ -498,7 +452,7 @@ swap(blkno, coreaddr, count, rdflg)
 		*fp =| B_WANTED;
 		sleep(fp, PSWP);
 	}
-	*fp = B_BUSY | B_PHYS | rdflg;
+	*fp = B_BUSY | rdflg;
 	swbuf.b_dev = swapdev;
 	swbuf.b_wcount = - (count<<5);	/* 32 w/block */
 	swbuf.b_blkno = blkno;
@@ -588,7 +542,7 @@ int (*strat)();
 		bp->b_flags =| B_WANTED;
 		sleep(bp, PRIBIO);
 	}
-	bp->b_flags = B_BUSY | B_PHYS | rw;
+	bp->b_flags = B_BUSY | rw;
 	bp->b_dev = dev;
 	/*
 	 * Compute physical address by simulating

@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 /*
@@ -27,7 +28,7 @@
 #define	PCOPRI	40
 #define	PCOLWAT	50
 #define	PCOHWAT	100
-#define	PCIHWAT	250
+#define	PCIHWAT	40
 
 struct {
 	int pcrcsr;
@@ -135,8 +136,10 @@ pcrint()
 
 pcpint()
 {
+	register int c;
 
-	pcstart();
+	if ((c=getc(&pc11.pcout)) >= 0)
+		PCADDR->pcpbuf = c;
 	if (pc11.pcout.cc <= PCOLWAT)
 		wakeup(&pc11.pcout);
 }
@@ -150,9 +153,7 @@ pcoutput(c)
 	if (pc11.pcout.cc >= PCOHWAT)
 		sleep(&pc11.pcout, PCOPRI);
 	putc(c, &pc11.pcout);
-	spl4();
 	pcstart();
-	spl0();
 }
 
 pcleader()

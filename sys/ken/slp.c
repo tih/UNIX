@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 #include "../param.h"
@@ -31,7 +32,8 @@ sleep(chan, pri)
 	if(pri >= 0) {
 		if(issig())
 			goto psig;
-		spl6();
+		if(pri > PPIPE)
+			u.u_dsleep = 0;
 		rp->p_wchan = chan;
 		rp->p_stat = SWAIT;
 		rp->p_pri = pri;
@@ -44,7 +46,6 @@ sleep(chan, pri)
 		if(issig())
 			goto psig;
 	} else {
-		spl6();
 		rp->p_wchan = chan;
 		rp->p_stat = SSLEEP;
 		rp->p_pri = pri;
@@ -109,13 +110,20 @@ setrun(p)
  * is set if the priority is higher
  * than the currently running process.
  */
-setpri(up)
+setpri()
 {
 	register *pp, p;
 
-	pp = up;
-	p = (pp->p_cpu & 0377)/16;
-	p =+ PUSER + pp->p_nice;
+	pp = u.u_procp;
+	p = u.u_dsleep/HZ;
+	/*
+	 * One priority penalty for every second
+	 * first 5 sec of execution and
+	 * every 15 sec thereafter
+	 */
+	if(p > 5)
+		p = 6 + (p-6)/15;
+	p =+ PUSER + u.u_nice;
 	if(p > 127)
 		p = 127;
 	if(p > curpri)
@@ -204,7 +212,7 @@ loop:
 	 * oldest process in core
 	 */
 
-	if(n < 3)
+	if(n < MEM_DELAY)
 		goto sloop;
 	n = -1;
 	for(rp = &proc[0]; rp < &proc[NPROC]; rp++)
@@ -214,7 +222,7 @@ loop:
 		p1 = rp;
 		n = rp->p_time;
 	}
-	if(n < 2)
+	if(n < SWAP_DELAY)
 		goto sloop;
 	rp = p1;
 
@@ -347,8 +355,12 @@ loop:
  * The subtle implication of the returned value of swtch
  * (see above) is that this is the value that newproc's
  * caller in the new process sees.
+ * UBC modification: newsize
+ * newsize=0 means do a normal (as before) newproc.
+ * if newsize!=0 then its for a kernal process and
+ * we may discard most of the u. information.
  */
-newproc()
+newproc(newsize)
 {
 	int a1, a2;
 	struct proc *p, *up;
@@ -387,7 +399,6 @@ retry:
 	rpp->p_flag = SLOAD;
 	rpp->p_uid = rip->p_uid;
 	rpp->p_ttyp = rip->p_ttyp;
-	rpp->p_nice = rip->p_nice;
 	rpp->p_textp = rip->p_textp;
 	rpp->p_pid = mpid;
 	rpp->p_ppid = rip->p_pid;
@@ -399,8 +410,13 @@ retry:
 	 */
 
 	for(rip = &u.u_ofile[0]; rip < &u.u_ofile[NOFILE];)
-		if((rpp = *rip++) != NULL)
-			rpp->f_count++;
+		if (newsize)
+			*rip++ = NULL;
+		else
+			if((rpp = *rip++) != NULL)
+				rpp->f_count++;
+	if (newsize)
+		up->p_textp = NULL;
 	if((rpp=up->p_textp) != NULL) {
 		rpp->x_count++;
 		rpp->x_ccount++;
@@ -415,7 +431,8 @@ retry:
 	rpp = p;
 	u.u_procp = rpp;
 	rip = up;
-	n = rip->p_size;
+	if ((n = newsize) == 0)
+		n = rip->p_size;
 	a1 = rip->p_addr;
 	rpp->p_size = n;
 	a2 = malloc(coremap, n);

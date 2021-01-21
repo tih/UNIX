@@ -12,7 +12,7 @@
 struct	filsys
 {
 	int	s_isize;	/* size in blocks of I list */
-	int	s_fsize;	/* size in blocks of entire volume */
+	char	*s_fsize;	/* size in blocks of entire volume */
 	int	s_nfree;	/* number of in core free blocks (0-100) */
 	int	s_free[100];	/* in core free blocks */
 	int	s_ninode;	/* number of in core I nodes (0-100) */
@@ -22,5 +22,8 @@ struct	filsys
 	char	s_fmod;		/* super block modified flag */
 	char	s_ronly;	/* mounted read-only flag */
 	int	s_time[2];	/* current date of last update */
-	int	pad[50];
+	int	s_pad1[3];
+	int	s_freecnt;	/* number of free blocks for df */
+	int	s_bad[8];	/* bad blocks ... not used */
+	int	pad[36];
 };

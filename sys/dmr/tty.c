@@ -1,12 +1,12 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 /*
  * general TTY subroutines
  */
 #include "../param.h"
-#include "../systm.h"
 #include "../user.h"
 #include "../tty.h"
 #include "../proc.h"
@@ -14,6 +14,9 @@
 #include "../file.h"
 #include "../reg.h"
 #include "../conf.h"
+
+#define FF 014
+struct { int integ; };
 
 /*
  * Input mapping table-- if an entry is non-zero, when the
@@ -27,11 +30,11 @@ char	maptab[]
 	000,000,000,000,000,000,000,000,
 	000,000,000,000,000,000,000,000,
 	000,000,000,000,000,000,000,000,
-	000,'|',000,'#',000,000,000,'`',
+	000,'|',000,000,000,000,000,'`',
 	'{','}',000,000,000,000,000,000,
 	000,000,000,000,000,000,000,000,
 	000,000,000,000,000,000,000,000,
-	'@',000,000,000,000,000,000,000,
+	000,000,000,000,000,000,000,000,
 	000,000,000,000,000,000,000,000,
 	000,000,000,000,000,000,000,000,
 	000,000,000,000,000,000,'~',000,
@@ -67,64 +70,6 @@ struct {
 	int tttcsr;
 	int tttbuf;
 };
-
-/*
- * The routine implementing the gtty system call.
- * Just call lower level routine and pass back values.
- */
-gtty()
-{
-	int v[3];
-	register *up, *vp;
-
-	vp = v;
-	sgtty(vp);
-	if (u.u_error)
-		return;
-	up = u.u_arg[0];
-	suword(up, *vp++);
-	suword(++up, *vp++);
-	suword(++up, *vp++);
-}
-
-/*
- * The routine implementing the stty system call.
- * Read in values and call lower level.
- */
-stty()
-{
-	register int *up;
-
-	up = u.u_arg[0];
-	u.u_arg[0] = fuword(up);
-	u.u_arg[1] = fuword(++up);
-	u.u_arg[2] = fuword(++up);
-	sgtty(0);
-}
-
-/*
- * Stuff common to stty and gtty.
- * Check legality and switch out to individual
- * device routine.
- * v  is 0 for stty; the parameters are taken from u.u_arg[].
- * c  is non-zero for gtty and is the place in which the device
- * routines place their information.
- */
-sgtty(v)
-int *v;
-{
-	register struct file *fp;
-	register struct inode *ip;
-
-	if ((fp = getf(u.u_ar0[R0])) == NULL)
-		return;
-	ip = fp->f_inode;
-	if ((ip->i_mode&IFMT) != IFCHR) {
-		u.u_error = ENOTTY;
-		return;
-	}
-	(*cdevsw[ip->i_addr[0].d_major].d_sgtty)(ip->i_addr[0], v);
-}
 
 /*
  * Wait for output to drain, then flush input waiting.
@@ -166,127 +111,6 @@ cinit()
 }
 
 /*
- * flush all TTY queues
- */
-flushtty(atp)
-struct tty *atp;
-{
-	register struct tty *tp;
-	register int sps;
-
-	tp = atp;
-	while (getc(&tp->t_canq) >= 0);
-	while (getc(&tp->t_outq) >= 0);
-	wakeup(&tp->t_rawq);
-	wakeup(&tp->t_outq);
-	sps = PS->integ;
-	spl5();
-	while (getc(&tp->t_rawq) >= 0);
-	tp->t_delct = 0;
-	PS->integ = sps;
-}
-
-/*
- * transfer raw input list to canonical list,
- * doing erase-kill processing and handling escapes.
- * It waits until a full line has been typed in cooked mode,
- * or until any character has been typed in raw mode.
- */
-canon(atp)
-struct tty *atp;
-{
-	register char *bp;
-	char *bp1;
-	register struct tty *tp;
-	register int c;
-
-	tp = atp;
-	spl5();
-	while (tp->t_delct==0) {
-		if ((tp->t_state&CARR_ON)==0)
-			return(0);
-		sleep(&tp->t_rawq, TTIPRI);
-	}
-	spl0();
-loop:
-	bp = &canonb[2];
-	while ((c=getc(&tp->t_rawq)) >= 0) {
-		if (c==0377) {
-			tp->t_delct--;
-			break;
-		}
-		if ((tp->t_flags&RAW)==0) {
-			if (bp[-1]!='\\') {
-				if (c==tp->t_erase) {
-					if (bp > &canonb[2])
-						bp--;
-					continue;
-				}
-				if (c==tp->t_kill)
-					goto loop;
-				if (c==CEOT)
-					continue;
-			} else
-			if (maptab[c] && (maptab[c]==c || (tp->t_flags&LCASE))) {
-				if (bp[-2] != '\\')
-					c = maptab[c];
-				bp--;
-			}
-		}
-		*bp++ = c;
-		if (bp>=canonb+CANBSIZ)
-			break;
-	}
-	bp1 = bp;
-	bp = &canonb[2];
-	c = &tp->t_canq;
-	while (bp<bp1)
-		putc(*bp++, c);
-	return(1);
-}
-
-/*
- * Place a character on raw TTY input queue, putting in delimiters
- * and waking up top half as needed.
- * Also echo if required.
- * The arguments are the character and the appropriate
- * tty structure.
- */
-ttyinput(ac, atp)
-struct tty *atp;
-{
-	register int t_flags, c;
-	register struct tty *tp;
-
-	tp = atp;
-	c = ac;
-	t_flags = tp->t_flags;
-	if ((c =& 0177) == '\r' && t_flags&CRMOD)
-		c = '\n';
-	if ((t_flags&RAW)==0 && (c==CQUIT || c==CINTR)) {
-		signal(tp, c==CINTR? SIGINT:SIGQIT);
-		flushtty(tp);
-		return;
-	}
-	if (tp->t_rawq.c_cc>=TTYHOG) {
-		flushtty(tp);
-		return;
-	}
-	if (t_flags&LCASE && c>='A' && c<='Z')
-		c =+ 'a'-'A';
-	putc(c, &tp->t_rawq);
-	if (t_flags&RAW || c=='\n' || c==004) {
-		wakeup(&tp->t_rawq);
-		if (putc(0377, &tp->t_rawq)==0)
-			tp->t_delct++;
-	}
-	if (t_flags&ECHO) {
-		ttyoutput(c, tp);
-		ttstart(tp);
-	}
-}
-
-/*
  * put character on TTY output queue, adding delays,
  * expanding tabs, and handling the CR/NL bit.
  * It is called both from the top half for output, and from
@@ -296,12 +120,18 @@ struct tty *atp;
 ttyoutput(ac, tp)
 struct tty *tp;
 {
+	extern char partab[];	/* ASCII table: parity, character class */
 	register int c;
 	register struct tty *rtp;
 	register char *colp;
 	int ctype;
 
 	rtp = tp;
+	if (rtp->t_flags == RAW)	/* just in raw mode */
+		{
+		putc(ac,&rtp->t_outq);
+		return;
+		}
 	c = ac&0177;
 	/*
 	 * Ignore EOT in normal mode to avoid hanging up
@@ -312,10 +142,21 @@ struct tty *tp;
 	/*
 	 * Turn tabs to spaces as required
 	 */
-	if (c=='\t' && rtp->t_flags&XTABS) {
+	if (ac=='\t' && rtp->t_flags&XTABS) {
 		do
 			ttyoutput(' ', rtp);
 		while (rtp->t_col&07);
+		return;
+	}
+	/*
+	 * generate a series of line feeds for a 
+	 * form feed.
+	 */
+	if(ac == FF && (rtp->t_flags&(RAW|VTDELAY)) == 0) {
+		c = 3;
+		do
+			ttyoutput('\n',rtp);
+		while (--c);
 		return;
 	}
 	/*
@@ -373,10 +214,10 @@ struct tty *tp;
 		if(ctype == 1) { /* tty 37 */
 			if (*colp)
 				c = max((*colp>>4) + 3, 6);
-		} else
-		if(ctype == 2) { /* vt05 */
+		} else if(ctype == 2)  /* vt05 */
 			c = 6;
-		}
+		else if(ctype == 3) /* Ann Arbor stupid terminal */
+			c = 1;
 		*colp = 0;
 		break;
 
@@ -408,6 +249,11 @@ struct tty *tp;
 			c = 10;
 		}
 		*colp = 0;
+		break;
+	/* sync == delay output for .1 second. */
+	case 7:
+		c = HZ/10;
+		break;
 	}
 	if(c)
 		putc(c|0200, &rtp->t_outq);
@@ -444,6 +290,7 @@ struct tty *atp;
 	register int *addr, c;
 	register struct tty *tp;
 	struct { int (*func)(); };
+	extern char partab[];	/* ASCII table: parity, character class */
 
 	tp = atp;
 	addr = tp->t_addr;
@@ -451,16 +298,38 @@ struct tty *atp;
 		(*addr.func)(tp);
 		return;
 	}
-	if ((addr->tttcsr&DONE)==0 || tp->t_state&TIMEOUT)
+	if ((addr->tttcsr&DONE)==0 || tp->t_state&(TIMEOUT|HALTOP))
 		return;
-	if ((c=getc(&tp->t_outq)) >= 0) {
-		if (c<=0177)
-			addr->tttbuf = c | (partab[c]&0200);
-		else {
-			timeout(ttrstrt, tp, c&0177);
-			tp->t_state =| TIMEOUT;
+	/*
+	 * if RAW and no parity bits set, then use all 8 bits.
+	 * if not RAW, or if parity bits set, then check for timeout
+	 * and generate appropriate parity bits.
+	 */
+	if ((c=getc(&tp->t_outq))>=0)
+		{
+		if (tp->t_flags != RAW)
+			{
+			if (c>=0200)
+				{
+				tp->t_state=|TIMEOUT;
+				timeout(ttrstrt,tp,(c&0177)+6);
+				}
+			else
+				{
+				switch (tp->t_flags&(EVENP|ODDP))
+					{
+				case EVENP:
+					c =| (partab[c]&0200);
+					break;
+				case ODDP:
+					c =| (partab[c]&0200) ^ 0200;
+					}
+				addr->tttbuf = c;
+				}
+			}
+		else
+			addr->tttbuf = c;	 /* use all 8 bits */
 		}
-	}
 }
 
 /*
@@ -473,12 +342,19 @@ ttread(atp)
 struct tty *atp;
 {
 	register struct tty *tp;
-
+	register char *base;
 	tp = atp;
+	base = u.u_base;
 	if ((tp->t_state&CARR_ON)==0)
 		return;
+	tp->t_state =& ~ OPSUPRS;
 	if (tp->t_canq.c_cc || canon(tp))
-		while (tp->t_canq.c_cc && passc(getc(&tp->t_canq))>=0);
+		while (tp->t_canq.c_cc && passc(getc(&tp->t_canq))>=0)
+			;
+#ifdef LOGGING
+	if ((tp->t_state & TTYILOG) && (tp->t_flags&RAW) == 0 && (tp->t_flags&ECHO) )
+		logtty(tp, base, u.u_base-base);	/* log what's read */
+#endif
 }
 
 /*
@@ -494,44 +370,261 @@ struct tty *atp;
 	tp = atp;
 	if ((tp->t_state&CARR_ON)==0)
 		return;
+#ifdef LOGGING
+	if ((tp->t_state & TTYOLOG) && (tp->t_flags&RAW) == 0 && (tp->t_flags&ECHO) )
+		logtty(tp, u.u_base, u.u_count);
+#endif
 	while ((c=cpass())>=0) {
-		spl5();
-		while (tp->t_outq.c_cc > TTHIWAT) {
-			ttstart(tp);
-			tp->t_state =| ASLEEP;
-			sleep(&tp->t_outq, TTOPRI);
+		if((tp->t_state&OPSUPRS)==0) {
+			spl5();
+			while (tp->t_outq.c_cc > TTHIWAT) {
+				ttstart(tp);
+				tp->t_state =| ASLEEP;
+				sleep(&tp->t_outq, TTOPRI);
+			}
+			spl0();
+			ttyoutput(c, tp);
 		}
-		spl0();
-		ttyoutput(c, tp);
 	}
+	spl5();
 	ttstart(tp);
+	spl0();
 }
 
 /*
- * Common code for gtty and stty functions on typewriters.
- * If v is non-zero then gtty is being done and information is
- * passed back therein;
- * if it is zero stty is being done and the input information is in the
- * u_arg array.
+ * flush all TTY queues
  */
-ttystty(atp, av)
-int *atp, *av;
+flushtty(atp)
+struct tty *atp;
 {
-	register  *tp, *v;
+	register struct tty *tp;
+	register int sps;
 
 	tp = atp;
-	if(v = av) {
-		*v++ = tp->t_speeds;
-		v->lobyte = tp->t_erase;
-		v->hibyte = tp->t_kill;
-		v[1] = tp->t_flags;
-		return(1);
-	}
-	wflushtty(tp);
-	v = u.u_arg;
-	tp->t_speeds = *v++;
-	tp->t_erase = v->lobyte;
-	tp->t_kill = v->hibyte;
-	tp->t_flags = v[1];
-	return(0);
+	while (getc(&tp->t_canq) >= 0);
+	while (getc(&tp->t_outq) >= 0);
+	wakeup(&tp->t_canq);
+	wakeup(&tp->t_rawq);
+	wakeup(&tp->t_outq);
+	sps = PS->integ;
+	spl5();
+	ttstop(tp);
+	while (getc(&tp->t_rawq) >= 0);
+	tp->t_beglin = 0;
+	tp->t_lincnt = 0;
+	tp->t_delct = 0;
+#ifdef SYNCECHO
+	tp->t_echoq = 0;
+#endif
+	PS->integ = sps;
 }
+
+/*
+ * transfer raw list to canonical list,
+ * doing code conversion.
+ * such as \ processing, EOT recognition
+ * the characters are taken of rawq and put on canq.
+ * input sleep is done until the rawq has a delimiter.
+ * if there is insuffient input on the rawq and we turned
+ * off input via ^S then send a ^Q to get more input.
+ */
+canon(atp)
+struct tty *atp;
+{
+	register struct tty *tp;
+	register int c, slf;
+
+	tp = atp;
+	spl5();
+#ifdef SYNCECHO
+	tp->t_procp = u.u_procp;
+	if (tp->t_state&SECHO)
+		ttecho(tp);
+#endif
+	while (tp->t_delct==0) {	/* if no delimiters on rawq */
+		if ((tp->t_state&CARR_ON)==0)
+			{ spl0(); return(0); }
+		if (tp->t_state & HALTSENT)
+			{
+			ttyoutput(CSTARTOP,tp);
+			ttstart(tp);		/* insure its going out */
+			tp->t_state =& ~HALTSENT;
+			}
+		tp->t_state =| INSLEEP;		/* we are now sleeping */
+		sleep(&tp->t_rawq, TTIPRI);	/* sleep til delcnt != 0 */
+	}
+	spl0();
+	slf = 0;
+	while ((c=getc(&tp->t_rawq)) >= 0) {
+/*
+ * treat 0377 as delimiter,
+ * except if in 8 bit mode and if first of a pair
+ * of delimiters.
+ */
+		if (c==0377 && (tp->t_flags != RAW || (tp->t_rawq.c_cc&1) == 0)) {
+			tp->t_delct--;
+			break;
+		}
+		if ((tp->t_flags&RAW)==0 && (tp->t_flags&LCASE)) {
+			if(c=='\\'){
+				if(slf){
+					slf = 0;
+					putc(c, &tp->t_canq);
+				} else
+					slf++;
+				continue;
+			} else {
+				if(slf){
+					if (maptab[c])
+						c = maptab[c];
+					else
+						putc('\\', &tp->t_canq);
+					slf = 0;
+				} else
+					if(c==CEOT)
+						continue;
+			}
+		}
+		putc(c, &tp->t_canq);
+	}
+#ifdef SYNCECHO
+	if (tp->t_rawq.c_cc == 0)
+		tp->t_echoq = 0;	/* nothing on q */
+#endif
+	return(1);
+}
+
+reducq(qp)
+/*
+ * remove a character from the raw input q.
+ * free the clist block if required to.
+ */
+struct clist *qp;
+{
+	extern cblkuse;
+	register struct clist *rqp;
+	register char *rcb, *rcb1;
+	int sps;
+
+	if ((rqp = qp) == 0)
+		return(-1);
+	if(rqp->c_cc==0)
+		return(-1);
+	sps = PS->integ;
+	spl6();
+	if(--rqp->c_cc==0){
+		rcb = rqp->c_cf&~07;
+		rcb->c_next = cfreelist;
+		cfreelist = rcb;
+		cblkuse--;
+		rqp->c_cf = 0;
+		rqp->c_cl = 0;
+	} else {
+		if(((rcb1 = --rqp->c_cl)&07)==2){
+			rcb1 =& ~07;
+			for(rcb = rqp->c_cf& ~07; rcb->c_next!=rcb1; rcb = rcb->c_next);
+			rcb1->c_next = cfreelist;
+			cfreelist = rcb1;
+			cblkuse--;
+			rqp->c_cl = rcb+010;
+			rcb->c_next = 0;
+		}
+	}
+	PS->integ = sps;
+	return((rcb = rqp->c_cl) ? (*(rcb-1))&0377 : -1);
+}
+
+
+ttstop()
+{
+}
+
+ttyopen(atp) struct tty *atp;
+{
+/*
+ * common code for opening a TTY device 
+ */
+register struct tty *tp;
+
+	tp = atp;
+	if (u.u_procp->p_ttyp == 0)
+		u.u_procp->p_ttyp = tp;
+	tp->t_state =& ~WOPEN;
+	tp->t_state =| ISOPEN;
+	++ttysopen;			/* count number opened */
+}
+
+ttyclose(atp) struct tty *atp;
+{
+/*
+ * common code for closing a TTY device 
+ */
+register struct tty *tp;
+
+	tp = atp;
+	wflushtty(tp);
+#ifdef LOGGING
+	if (tp->t_logf != NULL)
+		{
+		closef(tp->t_logf);
+		tp->t_logf = NULL;
+		}
+#endif
+	if (tp->t_state&ISOPEN)
+		--ttysopen;		/* no longer open */
+	tp->t_state = 0;
+#ifdef INTIMER
+	tp->t_intimer = tp->t_indelay = 0;	/* reset input timer */
+#endif
+}
+
+#ifdef SYNCECHO
+ttecho(atp) struct tty *atp;
+{
+/*
+ * routine to echo those characters on the input (RAW) Q 
+ * that are to be read on the current read and that have
+ * not been echoed yet.
+ * scan along raw q with tp->t_echoq pointer echoing characters
+ * til we hit a delimiter.
+ */
+register struct tty *tp;
+register char *q;
+int startf;
+int c;
+
+startf = 0;
+tp = atp;
+if (tp->t_rawq.c_cc == 0)
+	{			/* nothing to echo */
+	tp->t_echoq = NULL;
+	return;
+	}
+if (tp->t_echoq == NULL)
+	tp->t_echoq = tp->t_rawq.c_cf;	/* point to first one */
+while ((q = tp->t_echoq) && q != tp->t_rawq.c_cl)
+	{
+	if ((q & 07) == 0)
+		q = (q-010)->integ + 2;	 /* point to next entry */
+	c = *q++ & 0377;
+	tp->t_echoq = q;
+
+	if (c == 0377)
+		break;
+	if (tp->t_flags&ECHO)
+		{
+		ttyecho(c,tp);		/* actually echo it */
+		++startf;
+		while (tp->t_outq.c_cc > TTHIWAT)
+			{
+			ttstart(tp);
+			startf = 0;
+			tp->t_state =| ASLEEP;
+			sleep(&tp->t_outq, TTOPRI);
+			}
+		}
+	}
+if (startf)
+	ttstart(tp);		/* start echo if needed */
+}
+#endif

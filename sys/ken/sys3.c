@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 #include "../param.h"
@@ -11,6 +12,7 @@
 #include "../inode.h"
 #include "../file.h"
 #include "../conf.h"
+#include "../V7.h"
 
 /*
  * the fstat system call.
@@ -48,36 +50,74 @@ stat1(ip, ub)
 int *ip;
 {
 	register i, *bp, *cp;
+	struct { char *charp; };
 
-	iupdat(ip, time);
+	iupdat(ip, time, time);
 	bp = bread(ip->i_dev, ldiv(ip->i_number+31, 16));
 	cp = bp->b_addr + 32*lrem(ip->i_number+31, 16) + 24;
 	ip = &(ip->i_dev);
-	for(i=0; i<14; i++) {
-		suword(ub, *ip++);
-		ub =+ 2;
+#ifdef V7CODE
+	if (V7) {
+		suword(ub, *ip++); ub =+ 2; /* dev, ino, flags */
+		suword(ub, *ip++); ub =+ 2; /* dev, ino, flags */
+		suword(ub, *ip++ & ~0110000); ub =+ 2; /* dev, ino, flags */
+		for(i=0; i<3; i++) {
+			suword(ub, *ip.charp++ &0377); ub =+ 2; /* nlink uid gid */
+		}
+		suword(ub, cp[-8]); ub =+ 2;	/* rdev */
+		suword(ub, *ip.charp++ &0377); ub =+ 2;	/* size0 */
+		suword(ub, *ip++); ub =+ 2;	/* size 1*/
+		for(i=0; i<6; i++) {
+			if (i == 4)
+				cp =- 2;
+			suword(ub, *cp++);	/* copy disk part inode */
+			ub =+ 2;
+		}
 	}
-	for(i=0; i<4; i++) {
-		suword(ub, *cp++);
-		ub =+ 2;
+else
+#endif
+		{
+		for(i=0; i<14; i++) {
+			suword(ub, *ip++);	/* copy in-core inode */
+			ub =+ 2;
+		}
+		for(i=0; i<4; i++) {
+			suword(ub, *cp++);	/* copy disk part inode */
+			ub =+ 2;
+		}
 	}
 	brelse(bp);
 }
+
 
 /*
  * the dup system call.
  */
 dup()
 {
-	register i, *fp;
+	register i, m, *fp;
 
-	fp = getf(u.u_ar0[R0]);
+	m = u.u_ar0[R0] & 077;
+	fp = getf(m);
 	if(fp == NULL)
 		return;
-	if ((i = ufalloc()) < 0)
-		return;
-	u.u_ofile[i] = fp;
-	fp->f_count++;
+	if ((u.u_ar0[R0]&0100) == 0) {
+		if ((i = ufalloc()) < 0)
+			return;
+	} else {
+		i = u.u_ar0[R1];
+		if (i<0 || i>=NOFILE) {
+			u.u_error = EBADF;
+			return;
+		}
+		u.u_ar0[R0] = i;
+	}
+	if (i!=m) { /* close if not the same as original */
+		if (u.u_ofile[i]!=NULL)
+			closef(u.u_ofile[i]);
+		u.u_ofile[i] = fp;
+		fp->f_count++;
+	}
 }
 
 /*

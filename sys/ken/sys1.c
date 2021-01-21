@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 #include "../param.h"
@@ -9,6 +10,8 @@
 #include "../buf.h"
 #include "../reg.h"
 #include "../inode.h"
+#include "../stat.h"
+#include "../V7.h"
 
 /*
  * exec system call.
@@ -28,6 +31,7 @@ exec()
 	register c, *ip;
 	register char *cp;
 	extern uchar;
+	int hdr[8];		/* the program header */
 
 	/*
 	 * pick up file names
@@ -87,8 +91,8 @@ exec()
 	 * w3 = bss size
 	 */
 
-	u.u_base = &u.u_arg[0];
-	u.u_count = 8;
+	u.u_base = &hdr[0];
+	u.u_count = 16;
 	u.u_offset[1] = 0;
 	u.u_offset[0] = 0;
 	u.u_segflg = 1;
@@ -96,6 +100,8 @@ exec()
 	u.u_segflg = 0;
 	if(u.u_error)
 		goto bad;
+	for (c=0; c<4; ++c)
+		u.u_arg[c] = hdr[c];	/* copy into u.u_arg ... we have to */
 	sep = 0;
 	if(u.u_arg[0] == 0407) {
 		u.u_arg[2] =+ u.u_arg[1];
@@ -157,8 +163,16 @@ exec()
 	u.u_ssize = SSIZE;
 	u.u_sep = sep;
 	estabur(u.u_tsize, u.u_dsize, u.u_ssize, u.u_sep);
+	/*
+	 * copy parameter list
+	 */
 	cp = bp->b_addr;
 	ap = -nc - na*2 - 4;
+#ifdef V7CODE
+	u.u_system = hdr[7] >> 8;	/* set version number */
+	if (V7)
+		ap =- 2;	/* leave room for extra zero flag */
+#endif
 	u.u_ar0[R6] = ap;
 	suword(ap, na);
 	c = -nc;
@@ -168,7 +182,14 @@ exec()
 			subyte(c++, *cp);
 		while(*cp++);
 	}
-	suword(ap+2, -1);
+#ifdef V7CODE
+	if (V7) {
+		suword(ap+2, 0);		/* mark end of parameter list */
+		suword(ap+4, 0);		/* mark end of parameter list */
+	}
+	else
+#endif
+		suword(ap+2, -1);		/* mark end of parameter list */
 
 	/*
 	 * set SUID/SGID protections, if no tracing
@@ -188,6 +209,7 @@ exec()
 	 * clear sigs, regs and return
 	 */
 
+	u.u_trap = 0;		/* enable system calls */
 	c = ip;
 	for(ip = &u.u_signal[0]; ip < &u.u_signal[NSIG]; ip++)
 		if((*ip & 1) == 0)
@@ -230,7 +252,9 @@ exit()
 	register int *q, a;
 	register struct proc *p;
 
-	u.u_procp->p_flag =& ~STRC;
+	p = u.u_procp;
+	p->p_flag =& ~STRC;
+	p->p_clktim = 0;
 	for(q = &u.u_signal[0]; q < &u.u_signal[NSIG];)
 		*q++ = 1;
 	for(q = &u.u_ofile[0]; q < &u.u_ofile[NOFILE]; q++)
@@ -238,23 +262,28 @@ exit()
 			*q = NULL;
 			closef(a);
 		}
+	putstat(ST_ACC+ST_CPU,6,u.u_stime,u.u_utime[1],q->p_size);
+#ifdef ACC_LP
+	if (u.u_lplines || u.u_lppages || u.u_lpplot)
+		putstat(ST_ACC+ST_LP,6,u.u_lppages,u.u_lplines,u.u_lpplot);
+#endif
 	iput(u.u_cdir);
 	xfree();
-	a = malloc(swapmap, 1);
-	if(a == NULL)
-		panic("out of swap");
-	p = getblk(swapdev, a);
-	bcopy(&u, p->b_addr, 256);
-	bwrite(p);
 	q = u.u_procp;
 	mfree(coremap, q->p_size, q->p_addr);
-	q->p_addr = a;
 	q->p_stat = SZOMB;
+	dpadd(u.u_cstime,u.u_stime);
+	dpadd2(u.u_cutime,u.u_utime);
+	q->p_cstime[0] = u.u_cstime[0];
+	q->p_cstime[1] = u.u_cstime[1];
+	q->p_cutime[0] = u.u_cutime[0];
+	q->p_cutime[1] = u.u_cutime[1];
+	q->p_r1 = u.u_arg[0];
 
 loop:
 	for(p = &proc[0]; p < &proc[NPROC]; p++)
 	if(q->p_ppid == p->p_pid) {
-		wakeup(&proc[1]);
+			wakeup(&proc[1]);	/* wake init */
 		wakeup(p);
 		for(p = &proc[0]; p < &proc[NPROC]; p++)
 		if(q->p_pid == p->p_ppid) {
@@ -289,23 +318,15 @@ loop:
 		f++;
 		if(p->p_stat == SZOMB) {
 			u.u_ar0[R0] = p->p_pid;
-			bp = bread(swapdev, f=p->p_addr);
-			mfree(swapmap, 1, f);
+			u.u_ar0[R1] = p->p_r1;
+			dpadd2(u.u_cstime,p->p_cstime);
+			dpadd2(u.u_cutime,p->p_cutime);
 			p->p_stat = NULL;
 			p->p_pid = 0;
 			p->p_ppid = 0;
 			p->p_sig = 0;
 			p->p_ttyp = 0;
 			p->p_flag = 0;
-			p = bp->b_addr;
-			u.u_cstime[0] =+ p->u_cstime[0];
-			dpadd(u.u_cstime, p->u_cstime[1]);
-			dpadd(u.u_cstime, p->u_stime);
-			u.u_cutime[0] =+ p->u_cutime[0];
-			dpadd(u.u_cutime, p->u_cutime[1]);
-			dpadd(u.u_cutime, p->u_utime);
-			u.u_ar0[R1] = p->u_arg[0];
-			brelse(bp);
 			return;
 		}
 		if(p->p_stat == SSTOP) {
@@ -332,23 +353,41 @@ loop:
 fork()
 {
 	register struct proc *p1, *p2;
+	register int a;
+
+	a=0; p2 = NULL;
+	for(p1 = &proc[0]; p1 < &proc[NPROC]; p1++)
+		{
+		if(p1->p_stat == NULL)
+			{
+			if (p2 == NULL)
+				p2 = p1;
+			}
+		else if (p1->p_uid == u.u_uid &&
+				p1->p_ttyp == u.u_procp->p_ttyp)
+			++a;
+		}
+	if (p2 == NULL || (a > MAXUPRC && u.u_uid != 0))
+		{
+		u.u_error = EAGAIN;
+		goto out;
+		}
 
 	p1 = u.u_procp;
-	for(p2 = &proc[0]; p2 < &proc[NPROC]; p2++)
-		if(p2->p_stat == NULL)
-			goto found;
-	u.u_error = EAGAIN;
-	goto out;
-
-found:
-	if(newproc()) {
+	if(newproc(0)) {
 		u.u_ar0[R0] = p1->p_pid;
 		u.u_cstime[0] = 0;
 		u.u_cstime[1] = 0;
 		u.u_stime = 0;
 		u.u_cutime[0] = 0;
 		u.u_cutime[1] = 0;
-		u.u_utime = 0;
+		u.u_utime[0] = 0;
+		u.u_utime[1] = 0;
+#ifdef ACC_LP
+		u.u_lppages = 0;
+		u.u_lplines = 0;
+		u.u_lpplot = 0;
+#endif	/* ACC_LP */
 		return;
 	}
 	u.u_ar0[R0] = p2->p_pid;

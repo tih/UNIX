@@ -41,7 +41,7 @@ struct	inode
 #define	ILARG	010000		/* large addressing algorithm */
 #define	ISUID	04000		/* set user id on execution */
 #define	ISGID	02000		/* set group id on execution */
-#define ISVTX	01000		/* save swapped text even after use */
+#define ISVTX	01000		/* save text, event when not current */
 #define	IREAD	0400		/* read, write, execute permissions */
 #define	IWRITE	0200
 #define	IEXEC	0100

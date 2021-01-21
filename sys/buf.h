@@ -69,8 +69,6 @@ struct	buf bfreelist;
 #define	B_DONE	02	/* transaction finished */
 #define	B_ERROR	04	/* transaction aborted */
 #define	B_BUSY	010	/* not on av_forw/back list */
-#define	B_PHYS	020	/* Physical IO potentially using UNIBUS map */
-#define	B_MAP	040	/* This block has the UNIBUS map allocated */
 #define	B_WANTED 0100	/* issue wakeup when BUSY goes off */
 #define	B_RELOC	0200	/* no longer used */
 #define	B_ASYNC	0400	/* don't wait for I/O completion */

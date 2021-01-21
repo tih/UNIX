@@ -17,3 +17,4 @@ struct	file
 #define	FREAD	01
 #define	FWRITE	02
 #define	FPIPE	04
+#define	FAPPEND	010		/* file append mode */

@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 /*
@@ -20,7 +21,7 @@ struct {
 };
 
 struct	devtab	tctab;
-char	tcper[8];
+char tc_err[8];			/* error flags for write-ahead */
 
 #define	TCADDR	0177340
 #define	NTCBLK	578
@@ -49,7 +50,7 @@ char	tcper[8];
 tcclose(dev)
 {
 	bflush(dev);
-	tcper[dev&07] = 0;
+	tc_err[dev.d_minor] = 0;
 }
 
 tcstrategy(abp)
@@ -58,9 +59,7 @@ struct buf *abp;
 	register struct buf *bp;
 
 	bp = abp;
-	if(bp->b_flags&B_PHYS)
-		mapalloc(bp);
-	if(bp->b_blkno >= NTCBLK || tcper[bp->b_dev&07]) {
+	if(bp->b_blkno >= NTCBLK || tc_err[bp->b_dev.d_minor]) {
 		bp->b_flags =| B_ERROR;
 		iodone(bp);
 		return;
@@ -82,17 +81,9 @@ tcstart()
 	register struct buf *bp;
 	register int *tccmp, com;
 
-loop:
-	tccmp = &TCADDR->tccm;
 	if ((bp = tctab.d_actf) == 0)
 		return;
-	if(tcper[bp->b_dev&07]) {
-		if((tctab.d_actf = bp->av_forw) == 0)
-			(*tccmp).lobyte = SAT|GO;
-		bp->b_flags =| B_ERROR;
-		iodone(bp);
-		goto loop;
-	}
+	tccmp = &TCADDR->tccm;
 	if (((*tccmp).hibyte&07) != bp->b_dev.d_minor)
 		(*tccmp).lobyte = SAT|GO;
 	tctab.d_errcnt = 20;
@@ -115,15 +106,15 @@ tcintr()
 	tcdtp = &TCADDR->tccsr;
 	bp = tctab.d_actf;
 	if (*tccmp&TAPERR) {
-		if((*tcdtp&(ENDZ|BLKM)) == 0)
-			deverror(bp, *tcdtp, 0);
-		if(*tcdtp & (ILGOP|SELERR)) {
-			tcper[bp->b_dev&07]++;
+		if((*tcdtp & (ENDZ|BLKM)) == 0)
+			deverror(bp, *tcdtp);
+		if(*tcdtp & (ILGOP|SELERR))
 			tctab.d_errcnt = 0;
-		}
 		*tccmp =& ~TAPERR;
 		if (--tctab.d_errcnt  <= 0) {
 			bp->b_flags =| B_ERROR;
+			if (!(bp->b_flags&B_READ))
+				tc_err[bp->b_dev.d_minor] = 1;
 			goto done;
 		}
 		if (*tccmp&TREV) {

@@ -1,0 +1,32 @@
+v7=yes
+flag=
+case $# in
+0)	echo "usage: $0 system-name" >&2
+	exit 1
+	;;
+esac
+
+for i
+do
+	case $i in
+	-m) flag=$i
+		continue;;
+	-*) echo "$0: invalid option $i" >&2
+		exit 1;;
+	esac
+
+	config=config.$i
+	if [ ! -r $config ]
+	then
+		echo "$0: Can't find configuration file $config" 
+		exit 1
+	fi
+	awk -f config.awk ?devs $config sys=$i 
+	echo "l-$i.s, c-$i.c, and make.$i have been made."
+	if [ "$flag" ] 
+	then
+		make -f make.$i
+	else
+		echo "to make unix.$i: make -f make.$i"
+	fi
+done

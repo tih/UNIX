@@ -1,5 +1,8 @@
+CPUTYPE	=	34.
+.fpp	=	0.
+/ Copyright 1975 Bell Telephone Laboratories Inc
 / machine language assist
-/ for 11/40
+/ for 11/23 or 11/34
 
 / non-UNIX instructions
 mfpi	= 6500^tst
@@ -7,6 +10,11 @@ mtpi	= 6600^tst
 wait	= 1
 rtt	= 6
 reset	= 5
+halt	=	0
+
+/ locations
+HIPRI	=	300
+.globl CSW
 
 .globl	trap, call
 .globl	_trap
@@ -39,15 +47,32 @@ call:
 	bic	$!37,(sp)
 	bit	$30000,PS
 	beq	1f
+.if .fpp
+	mov	$20,_u+4		/ FP maint mode
+.endif
 	jsr	pc,*(r0)+
-2:
-	bis	$340,PS
 	tstb	_runrun
 	beq	2f
-	bic	$340,PS
 	jsr	pc,_swtch
-	br	2b
 2:
+.if .fpp
+	mov	$_u+4,r1
+	bit	$20,(r1)
+	bne	2f
+	mov	(r1)+,r0
+	ldfps	r0
+	movf	(r1)+,fr0
+	movf	(r1)+,fr1
+	movf	fr1,fr4
+	movf	(r1)+,fr1
+	movf	fr1,fr5
+	movf	(r1)+,fr1
+	movf	(r1)+,fr2
+	movf	(r1)+,fr3
+	ldfps	r0
+2:
+.endif
+	bis	$340,PS
 	tst	(sp)+
 	mtpi	sp
 	br	2f
@@ -63,6 +88,23 @@ call:
 
 .globl	_savfp, _display
 _savfp:
+.if .fpp
+	mov	$_u+4,r1
+	bit	$20,(r1)
+	beq	1f
+	stfps	(r1)+
+	movf	fr0,(r1)+
+	movf	fr4,fr0
+	movf	fr0,(r1)+
+	movf	fr5,fr0
+	movf	fr0,(r1)+
+	movf	fr1,(r1)+
+	movf	fr2,(r1)+
+	movf	fr3,(r1)+
+1:
+.endif
+	rts	pc
+.globl	_display
 _display:
 	rts	pc
 
@@ -105,7 +147,7 @@ _getc:
 	mov	PS,-(sp)
 	mov	r2,-(sp)
 	bis	$340,PS
-	bic	$100,PS		/ spl 5
+	bic	$40,PS		/ spl 6
 	mov	2(r1),r2	/ first ptr
 	beq	9f		/ empty
 	movb	(r2)+,r0	/ character
@@ -144,7 +186,7 @@ _putc:
 	mov	r2,-(sp)
 	mov	r3,-(sp)
 	bis	$340,PS
-	bic	$100,PS		/ spl 5
+	bic	$40,PS		/ spl 6
 	mov	4(r1),r2	/ last ptr
 	bne	1f
 	mov	_cfreelist,r2
@@ -480,6 +522,20 @@ pword:
 	mov	(sp)+,PS
 	rts	pc
 
+.globl _kdword
+_kdword:
+	mov	2(sp),r1		/the address
+	jsr	pc,1f
+	rts	pc
+1:	mov	PS,-(sp)
+	bis	$340,PS			/spl HIGH
+	mov	nofault,-(sp)
+	mov	$err,nofault
+	mov	(r1),r0
+	mov	(sp)+,nofault
+	mov	(sp)+,PS
+	rts	pc
+
 err:
 	mov	(sp)+,nofault
 	mov	(sp)+,PS
@@ -586,6 +642,42 @@ _spl7:
 	bis	$340,PS
 	rts	pc
 
+.globl	_copymem
+/ copymem(n,fhi,flo,thi,tlo)
+_copymem:
+	mov	PS,-(sp)
+	mov	UISA0,-(sp)
+	mov	UISA1,-(sp)
+	mov	UISD0,-(sp)
+	mov	UISD1,-(sp)
+	mov	$30340,PS
+	mov	r2,-(sp)
+/ stack is now: r2, UISD1, UISD0, UISA1, UISA0, PS, PC, n, fhi, flo, thi, tlo
+/		0    2         4   6      10   12   14 16   20  22   24   26
+	mov	20(sp),r0
+	mov	22(sp),r1
+	div	$64.,r0
+	mov	r0,UISA0
+	mov	r1,r2		/save it
+	mov	24(sp),r0
+	mov	26(sp),r1
+	div	$64.,r0
+	mov	r0,UISA1
+	mov	$77406,UISD0
+	mov	$77406,UISD1
+	add	$8192.,r1
+	mov	16(sp),r0
+1:
+	mfpi	(r2)+
+	mtpi	(r1)+
+	sob	r0,1b
+	mov	(sp)+,r2
+	mov	(sp)+,UISD1
+	mov	(sp)+,UISD0
+	mov	(sp)+,UISA1
+	mov	(sp)+,UISA0
+	mov	(sp)+,PS
+	rts	pc
 .globl	_copyseg
 _copyseg:
 	mov	PS,-(sp)
@@ -640,6 +732,14 @@ _dpadd:
 	adc	(r0)
 	rts	pc
 
+.globl _dpadd2
+_dpadd2:
+	mov	2(sp),r0
+	mov	4(sp),r1
+	add	2(r1),2(r0)
+	adc	(r0)
+	add	(r1),(r0)
+	rts	pc
 .globl	_dpcmp
 _dpcmp:
 	mov	2(sp),r0
@@ -709,6 +809,12 @@ start:
 	bit	$1,SSR0
 	bne	start			/ loop if restart
 	reset
+	mov	$trap,*$0		/random interrupt
+/ test if booted from dec-tape 
+	cmp	$173120,*CSW
+	bne	1f
+	halt
+1:
 
 / initialize systems segments
 
@@ -767,6 +873,10 @@ start:
 	clr	-(sp)
 	rtt
 
+.globl _sws
+_sws:
+	mov	*CSW,r0
+	rts	pc
 .globl	_ldiv
 _ldiv:
 	clr	r0
@@ -798,7 +908,8 @@ csv:
 	mov	r4,-(sp)
 	mov	r3,-(sp)
 	mov	r2,-(sp)
-	jsr	pc,(r0)
+	clr	-(sp)
+	jmp	(r0)
 
 .globl cret
 cret:
@@ -830,7 +941,7 @@ IO	= 7600
 .data
 .globl	_ka6, _cputype
 _ka6:	KISA6
-_cputype:40.
+_cputype:	CPUTYPE
 
 .bss
 .globl	nofault, ssr, badtrap

@@ -2,9 +2,9 @@
  * tunable variables
  */
 
-#define	NBUF	15		/* size of buffer cache */
-#define	NINODE	100		/* number of in core inodes */
-#define	NFILE	100		/* number of in core file structures */
+#define	NBUF	14		/* size of buffer cache */
+#define	NINODE	50		/* number of in core inodes */
+#define	NFILE	50		/* number of in core file structures */
 #define	NMOUNT	5		/* number of mountable file systems */
 #define	NEXEC	3		/* number of simultaneous exec's */
 #define	MAXMEM	(64*32)		/* max core per process - first # is Kw */
@@ -15,10 +15,11 @@
 #define	CMAPSIZ	100		/* size of core allocation area */
 #define	SMAPSIZ	100		/* size of swap allocation area */
 #define	NCALL	20		/* max simultaneous time callouts */
-#define	NPROC	50		/* max number of processes */
-#define	NTEXT	40		/* max number of pure texts */
-#define	NCLIST	100		/* max total clist size */
+#define	NPROC	25		/* max number of processes */
+#define	NTEXT	15		/* max number of pure texts */
+#define	NCLIST	200		/* max total clist size */
 #define	HZ	60		/* Ticks/second of the clock */
+#define	MAXUPRC	25		/* max number of procs per user */
 
 /*
  * priorities
@@ -53,7 +54,11 @@
 #define		SIGSEG	11	/* segmentation violation */
 #define		SIGSYS	12	/* sys */
 #define		SIGPIPE	13	/* end of pipe */
+#define		SIGCLK	14	/* alarm clock */
+#define		SIGTERM	15	/* software termination */
 
+#define	SIG_IGN	1
+#define	SIG_HOLD 1
 /*
  * fundamental constants
  * cannot be changed
@@ -89,3 +94,25 @@ struct
 #define PS	0177776
 #define KL	0177560
 #define SW	0177570
+
+/*
+ * number of tty's of various types.
+ */
+#define	NKL11	6
+#define	NDL11	0
+#define	NDZ11	8
+#define	SWAPDELAY	01
+#define	BYTEMASK	0377
+#define	MAXLINK	127		/* max number of links to a file */
+#define	MEM_DELAY	5	/* must be out of memory MEM_DELAY seconds */
+#define	SWAP_DELAY	3	/* must be out SWAP_DELAY secs. before swap out */
+#define	SLOWSWAP	1	/* if swap device is slow */
+
+#define	TIMEZONE	8
+#define	DST	1
+
+/* #define	ERRLOG	1	/* log errors into memory buffer */
+#define	IOCTL	1	/* real ioctl code generated */
+#define	LOGGING	1	/* code to log tty I/O */
+/* #define	SYNCECHO	1	/* sync echo with read */
+/* #define	INTIMER	1	/* input delay on CBREAK mode */

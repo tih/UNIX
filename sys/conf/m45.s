@@ -1,13 +1,17 @@
+/ Copyright 1975 Bell Telephone Laboratories Inc
 / machine language assist
 / for 11/45 or 11/70 CPUs
 
 .fpp = 1
+mtdump	=	0
+dtdump	=	1-mtdump
 
 / non-UNIX instructions
 mfpi	= 6500^tst
 mtpi	= 6600^tst
 mfpd	= 106500^tst
 mtpd	= 106600^tst
+halt	=	0
 spl	= 230
 ldfps	= 170100^tst
 stfps	= 170200^tst
@@ -16,7 +20,9 @@ rtt	= 6
 reset	= 5
 
 HIPRI	= 300
+MEDPRI	= 5*40
 HIGH	= 6
+TTYPRIO	= 5		/priority for tty related operations
 
 / Mag tape dump
 / save registers in low core and
@@ -42,6 +48,7 @@ dump:
 	mov	sp,(r0)+
 	mov	KDSA6,(r0)+
 
+	.if	mtdump
 / dump all of core (ie to first mt error)
 / onto mag tape. (9 track or 7 track 'binary')
 
@@ -63,6 +70,31 @@ dump:
 	mov	$60007,-(r0)
 	br	.
 
+	.endif
+	.if	dtdump
+tccm	=	177342
+	5			/reset
+1:	mov	$tccm,r0	/cmd reg
+	mov	$4003,(r0)	/rnum bkwd
+2:	tst	(r0)		/end zone?
+	bge	2b
+	tst	-2(r0)		/loop if not end zone
+	bge	1b
+5:	mov	$3,(r0)		/read num
+1:	tstb	(r0)		/ready?
+	bge	1b
+	mov	$14,(r0)	/write data
+1:	mov	$-256.,2(r0)	/wc = 1 block
+	inc	(r0)		/execute cmd
+2:	tst	(r0)		/test if error
+	bmi	3f		/if error
+	tstb	(r0)		/test if done
+	bge	2b
+	br	1b
+3:
+	clr	(r0)
+	0			/halt
+	.endif
 .globl	start, _end, _edata, _etext, _main
 
 / 11/45 and 11/70 startup.
@@ -75,6 +107,14 @@ start:
 	bne	.
 	reset
 	clr	PS
+	mov	$trap,*$0	/random interrupts 
+/
+/	test if booted from dec-tape, if so halt 
+/
+	cmp	177570,$173120
+	bne	1f
+	halt
+1:
 
 / set KI0 to physical 0
 
@@ -119,7 +159,7 @@ start:
 / clear bss in D space
 
 	mov	$stk+2,sp
-	mov	$65,SSR3		/ 22-bit, map, K+U sep
+	mov	$25,SSR3		/ 22-bit addr KU ID space sep
 	bit	$20,SSR3
 	beq	1f
 	mov	$70.,_cputype
@@ -215,14 +255,10 @@ call:
 	mov	$20,_u+4		/ FP maint mode
 .endif
 	jsr	pc,*(r0)+
-2:
-	spl	HIGH
 	tstb	_runrun
 	beq	2f
-	spl	0
 	jsr	pc,_savfp
 	jsr	pc,_swtch
-	br	2b
 2:
 .if .fpp
 	mov	$_u+4,r1
@@ -230,6 +266,7 @@ call:
 	bne	2f
 	mov	(r1)+,r0
 	ldfps	r0
+	setd
 	movf	(r1)+,fr0
 	movf	(r1)+,fr1
 	movf	fr1,fr4
@@ -241,6 +278,7 @@ call:
 	ldfps	r0
 2:
 .endif
+	spl	HIGH
 	tst	(sp)+
 	mtpd	sp
 	br	2f
@@ -261,6 +299,7 @@ _savfp:
 	bit	$20,(r1)
 	beq	1f
 	stfps	(r1)+
+	setd
 	movf	fr0,(r1)+
 	movf	fr4,fr0
 	movf	fr0,(r1)+
@@ -333,7 +372,7 @@ _getc:
 	mov	2(sp),r1
 	mov	PS,-(sp)
 	mov	r2,-(sp)
-	spl	5
+	spl	TTYPRIO
 	mov	2(r1),r2	/ first ptr
 	beq	9f		/ empty
 	movb	(r2)+,r0	/ character
@@ -371,7 +410,7 @@ _putc:
 	mov	PS,-(sp)
 	mov	r2,-(sp)
 	mov	r3,-(sp)
-	spl	5
+	spl	TTYPRIO
 	mov	4(r1),r2	/ last ptr
 	bne	1f
 	mov	_cfreelist,r2
@@ -555,6 +594,23 @@ pword:
 	mov	(sp)+,PS
 	rts	pc
 
+.globl _halt
+_halt:
+	0
+	rts	pc
+.globl _kdword
+_kdword:
+	mov	2(sp),r1		/the address
+	jsr	pc,1f
+	rts	pc
+1:	mov	PS,-(sp)
+	spl	HIGH
+	mov	nofault,-(sp)
+	mov	$err,nofault
+	mov	(r1),r0
+	mov	(sp)+,nofault
+	mov	(sp)+,PS
+	rts	pc
 err:
 	mov	(sp)+,nofault
 	mov	(sp)+,PS
@@ -683,7 +739,7 @@ _copyseg:
 	mov	PS,-(sp)
 	mov	4(sp),SISA0
 	mov	6(sp),SISA1
-	mov	$10000+HIPRI,PS
+	mov	$10000+MEDPRI,PS
 	mov	r2,-(sp)
 	clr	r0
 	mov	$8192.,r1
@@ -700,7 +756,7 @@ _copyseg:
 _clearseg:
 	mov	PS,-(sp)
 	mov	4(sp),SISA0
-	mov	$10000+HIPRI,PS
+	mov	$10000+MEDPRI,PS
 	clr	r0
 	mov	$32.,r1
 1:
@@ -715,6 +771,14 @@ _dpadd:
 	mov	2(sp),r0
 	add	4(sp),2(r0)
 	adc	(r0)
+	rts	pc
+.globl _dpadd2
+_dpadd2:
+	mov	2(sp),r0
+	mov	4(sp),r1
+	add	2(r1),2(r0)
+	adc	(r0)
+	add	(r1),(r0)
 	rts	pc
 
 .globl	_dpcmp
@@ -773,7 +837,8 @@ csv:
 	mov	r4,-(sp)
 	mov	r3,-(sp)
 	mov	r2,-(sp)
-	jsr	pc,(r0)
+	clr	-(sp)
+	jmp	(r0)
 
 .globl cret
 cret:

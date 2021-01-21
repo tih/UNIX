@@ -45,13 +45,25 @@ struct user
 	int	u_qsav[2];		/* label variable for quits and interrupts */
 	int	u_ssav[2];		/* label variable for swapping */
 	int	u_signal[NSIG];		/* disposition of signals */
-	int	u_utime;		/* this process user time */
-	int	u_stime;		/* this process system time */
+	int	u_utime[2];		/* this process user time */
 	int	u_cutime[2];		/* sum of childs' utimes */
 	int	u_cstime[2];		/* sum of childs' stimes */
 	int	*u_ar0;			/* address of users saved R0 */
 	int	u_prof[4];		/* profile arguments */
+	char	u_nice;			/* how nice */
 	char	u_intflg;		/* catch intr from sys */
+	int	u_dsleep;		/* scheduling flag */
+	char	*u_trap;		/* sys call trap flag */
+	int	u_stime;		/* this process system time */
+#ifdef	ACC_LP
+	int	u_lppages;		/* line printer pages */
+	int	u_lplines;		/* "	"	lines */
+	int	u_lpplot;		/* "	"	plot lines */
+#endif	/* ACC_LP */
+	int	u_mask;			/* access mode mask */
+	char	u_system;		/* 6 or 7 */
+	char	u_call;			/* final trap number if V7 */
+
 					/* kernel stack per user
 					 * extends from u + USIZE*64
 					 * backward not to reach here

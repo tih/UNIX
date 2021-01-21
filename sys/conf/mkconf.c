@@ -13,7 +13,6 @@ char	*btab[]
 	"tc",
 	"hs",
 	"hp",
-	"ht",
 	0
 };
 char	*ctab[]
@@ -33,7 +32,6 @@ char	*ctab[]
 	"tm",
 	"hs",
 	"hp",
-	"ht",
 	0
 };
 struct tab
@@ -153,14 +151,6 @@ struct tab
 	"\t&tmopen,\t&tmclose,\t&tmstrategy, \t&tmtab,",
 	"\t&tmopen,   &tmclose,  &tmread,   &tmwrite,  &nodev,",
 
-	"ht",
-	0,	224,	BLOCK+CHAR+INTR,
-	"\thtio; br5\n",
-	".globl\t_htintr\n",
-	"htio:\tjsr\tr0,call; _htintr\n",
-	"\t&htopen,\t&htclose,\t&htstrategy, \t&httab,",
-	"\t&htopen,   &htclose,  &htread,   &htwrite,  &nodev,",
-
 	"cr",
 	0,	230,	CHAR+INTR,
 	"\tcrin; br6\n",
@@ -278,6 +268,7 @@ struct tab
 
 char	*stra[]
 {
+	"/ Copyright 1975 Bell Telephone Laboratories Inc",
 	"/ low core",
 	"",
 	"br4 = 200",
@@ -338,6 +329,7 @@ char	*strd[]
 char	*stre[]
 {
 	"/*",
+	" *\tCopyright 1975 Bell Telephone Laboratories Inc",
 	" */",
 	"",
 	"int\t(*bdevsw[])()",

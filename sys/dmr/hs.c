@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1975 Bell Telephone Laboratories Inc
  */
 
 /*
@@ -20,12 +21,6 @@ struct {
 	int	hscs2;	/* Control and Status register 2 */
 	int	hsds;	/* Drive Status */
 	int	hser;	/* Error register */
-	int	hsas;	/* not used */
-	int	hsla;	/* not used */
-	int	hsdb;	/* not used */
-	int	hsmr;	/* not used */
-	int	hsdt;	/* not used */
-	int	hsbae;	/* 11/70 bus extension */
 };
 
 struct	devtab	hstab;
@@ -77,7 +72,7 @@ hsstart()
 	if(bp->b_dev.d_minor < 8)
 		addr =<< 1; /* RJS03 */
 	HSADDR->hscs2 = bp->b_dev.d_minor & 07;
-	rhstart(bp, &HSADDR->hsda, addr<<1, &HSADDR->hsbae);
+	rhstart(bp, &HSADDR->hsda, addr<<1);
 }
 
 hsintr()
@@ -89,7 +84,7 @@ hsintr()
 	bp = hstab.d_actf;
 	hstab.d_active = 0;
 	if(HSADDR->hscs1 & ERR){	/* error bit */
-		deverror(bp, HSADDR->hscs2, 0);
+		deverror(bp, HSADDR->hscs2);
 		HSADDR->hscs1 = RCLR|GO;
 		if (++hstab.d_errcnt <= 10) {
 			hsstart();

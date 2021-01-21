@@ -1,10 +1,15 @@
 #
+/*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
+ */
+
 #include "../param.h"
 #include "../systm.h"
 #include "../user.h"
 #include "../reg.h"
 #include "../file.h"
 #include "../inode.h"
+#include "../V7.h"
 
 /*
  * read system call
@@ -63,13 +68,16 @@ rdwr(mode)
 open()
 {
 	register *ip;
+	register int mode;
 	extern uchar;
 
 	ip = namei(&uchar, 0);
 	if(ip == NULL)
 		return;
-	u.u_arg[1]++;
-	open1(ip, u.u_arg[1], 0);
+	mode = u.u_arg[1];
+	if (++mode == 04)
+		mode = 07;	/* 0 ==>FREAD 1==>FWRITE 2==>FREAD+FWRITE 3 ==> 7 */
+	open1(ip, mode, 0);
 }
 
 /*
@@ -84,9 +92,7 @@ creat()
 	if(ip == NULL) {
 		if(u.u_error)
 			return;
-		ip = maknode(u.u_arg[1]&07777&(~ISVTX));
-		if (ip==NULL)
-			return;
+		ip = maknode(u.u_arg[1]&07777&(~ISVTX)&~u.u_mask);
 		open1(ip, FWRITE, 2);
 	} else
 		open1(ip, FWRITE, 1);
@@ -96,6 +102,8 @@ creat()
  * common code for open and creat.
  * Check permissions, allocate an open file structure,
  * and call the device open routine if any.
+ * modified June 15/81 by W. Webb to allow super-user open of
+ * a directory (mode=03) for read/write.
  */
 open1(ip, mode, trf)
 int *ip;
@@ -111,7 +119,7 @@ int *ip;
 			access(rip, IREAD);
 		if(m&FWRITE) {
 			access(rip, IWRITE);
-			if((rip->i_mode&IFMT) == IFDIR)
+			if((rip->i_mode&IFMT) == IFDIR && !((m&04) && suser()))
 				u.u_error = EISDIR;
 		}
 	}
@@ -195,6 +203,46 @@ seek()
 	fp->f_offset[1] = n[1];
 	fp->f_offset[0] = n[0];
 }
+/*
+ * lseek system call
+ */
+lseek()
+{
+	int n[2];
+	register *fp, t;
+
+	fp = getf(u.u_ar0[R0]);
+	if(fp == NULL)
+		return;
+	if(fp->f_flag&FPIPE) {
+		u.u_error = ESPIPE;
+		return;
+	}
+	t = u.u_arg[2];
+	n[0] = u.u_arg[0];
+	n[1] = u.u_arg[1];
+	switch(t) {
+
+	case 0:		/* absolute */
+		break;
+	case 1:		/* relative */
+		n[0] =+ fp->f_offset[0];
+		dpadd(n, fp->f_offset[1]);
+		break;
+
+	case 2:		/* to end of the file */
+		n[0] =+ fp->f_inode->i_size0&0377;
+		dpadd(n, fp->f_inode->i_size1);
+		break;
+	default:
+		u.u_error = EFAULT;
+
+	}
+	u.u_ar0[R0] = fp->f_offset[0];	/* returned results in r0, r1 */
+	u.u_ar0[R1] = fp->f_offset[1];
+	fp->f_offset[1] = n[1];
+	fp->f_offset[0] = n[0];
+}
 
 /*
  * link system call
@@ -207,7 +255,7 @@ link()
 	ip = namei(&uchar, 0);
 	if(ip == NULL)
 		return;
-	if(ip->i_nlink >= 127) {
+	if((ip->i_nlink & BYTEMASK) >= MAXLINK) {
 		u.u_error = EMLINK;
 		goto out;
 	}
@@ -255,9 +303,7 @@ mknod()
 	}
 	if(u.u_error)
 		return;
-	ip = maknode(u.u_arg[1]);
-	if (ip==NULL)
-		return;
+	ip = maknode(u.u_arg[1] & ~u.u_mask);
 	ip->i_addr[0] = u.u_arg[2];
 
 out:
@@ -287,3 +333,33 @@ sslep()
 	}
 	spl0();
 }
+
+#ifdef V7CODE
+/*
+ * faccess test access to a file
+ * trick is to set uid, gid to ruid, rgid so that the internal
+ * access routine can be used.
+ */
+faccess()
+{
+char uid, gid;
+register char *ip;
+register int mode;
+extern uchar;
+
+if ((ip = namei(&uchar,0)) == NULL)
+	return;
+uid = u.u_uid; gid = u.u_gid;
+u.u_uid = u.u_ruid; u.u_gid = u.u_rgid;
+mode = u.u_arg[1];
+if (mode & (IEXEC>>6))
+	access(ip,IEXEC);
+if (mode & (IWRITE>>6))
+	access(ip,IWRITE);
+if (mode & (IREAD>>6))
+	access(ip,IREAD);
+u.u_uid = uid; u.u_gid = gid;
+iput(ip);
+}
+#endif
+

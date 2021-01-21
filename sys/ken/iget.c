@@ -1,4 +1,8 @@
 #
+/*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
+ */
+
 #include "../param.h"
 #include "../systm.h"
 #include "../user.h"
@@ -18,7 +22,7 @@
  * In all cases, a pointer to a locked
  * inode structure is returned.
  *
- * printf warning: no inodes -- if the inode
+ * panic: no inodes -- if the inode
  *	structure is full
  * panic: no imt -- if the mounted file
  *	system is not in the mount table.
@@ -56,25 +60,14 @@ loop:
 		if(ip==NULL && p->i_count==0)
 			ip = p;
 	}
-	if((p=ip) == NULL) {
-		printf("Inode table overflow\n");
-		u.u_error = ENFILE;
-		return(NULL);
-	}
+	if((p=ip) == NULL)
+		panic("no inodes");
 	p->i_dev = dev;
 	p->i_number = ino;
 	p->i_flag = ILOCK;
 	p->i_count++;
 	p->i_lastr = -1;
 	ip = bread(dev, ldiv(ino+31,16));
-	/*
-	 * Check I/O errors
-	 */
-	if (ip->b_flags&B_ERROR) {
-		brelse(ip);
-		iput(p);
-		return(NULL);
-	}
 	ip1 = ip->b_addr + 32*lrem(ino+31, 16);
 	ip2 = &p->i_mode;
 	while(ip2 < &p->i_addr[8])
@@ -98,12 +91,12 @@ struct inode *p;
 	rp = p;
 	if(rp->i_count == 1) {
 		rp->i_flag =| ILOCK;
-		if(rp->i_nlink <= 0) {
+		if((rp->i_nlink&BYTEMASK) == 0) {
 			itrunc(rp);
 			rp->i_mode = 0;
 			ifree(rp->i_dev, rp->i_number);
 		}
-		iupdat(rp, time);
+		iupdat(rp, time, time);
 		prele(rp);
 		rp->i_flag = 0;
 		rp->i_number = 0;
@@ -117,11 +110,11 @@ struct inode *p;
  * an inode structure.
  * If either is on, update the inode
  * with the corresponding dates
- * set to the argument tm.
+ * set to the arguments atm is access time, mtm is mod time.
  */
-iupdat(p, tm)
+iupdat(p, atm, mtm)
 int *p;
-int *tm;
+int *atm, *mtm;
 {
 	register *ip1, *ip2, *rp;
 	int *bp, i;
@@ -137,13 +130,13 @@ int *tm;
 		while(ip2 < &rp->i_addr[8])
 			*ip1++ = *ip2++;
 		if(rp->i_flag&IACC) {
-			*ip1++ = time[0];
-			*ip1++ = time[1];
+			*ip1++ = atm[0];
+			*ip1++ = atm[1];
 		} else
 			ip1 =+ 2;
 		if(rp->i_flag&IUPD) {
-			*ip1++ = *tm++;
-			*ip1++ = *tm;
+			*ip1++ = *mtm++;
+			*ip1++ = *mtm;
 		}
 		bwrite(bp);
 	}
@@ -201,8 +194,6 @@ maknode(mode)
 	register *ip;
 
 	ip = ialloc(u.u_pdir->i_dev);
-	if (ip==NULL)
-		return(NULL);
 	ip->i_flag =| IACC|IUPD;
 	ip->i_mode = mode|IALLOC;
 	ip->i_nlink = 1;

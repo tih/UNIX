@@ -1,0 +1,29 @@
+# conditional inclustions of devices in l.s
+# specifying the name on the left brings in the entire line
+# otherwise line of form: name = 0
+# is generated
+cr	=	1
+dz	=	1
+dz2	=	1
+dz3	=	1
+dz4	=	1
+hm	=	1
+ic	=	1
+ir	=	1
+lp	=	1
+pc	=	1
+pir	=	1	/ machine has PIR 
+rx2	=	1
+tc	=	1
+tm	=	1
+dup	=	1
+rk	=	1
+xy	=	1
+rl	=	1
+dl	=	1
+dl2	=	1
+dl3	=	1
+dl4	=	1
+dl5	=	1
+csw	=	1	/ machine has switch register
+ltc	=	1	/ machine has LTC but no register

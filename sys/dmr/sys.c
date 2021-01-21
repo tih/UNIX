@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1974 Bell Telephone Laboratories Inc
  */
 
 /*
@@ -35,12 +36,12 @@ sywrite(dev)
 	(*cdevsw[tp->t_dev.d_major].d_write)(tp->t_dev);
 }
 
-sysgtty(dev, flag)
+sysgtty(dev, cmd, addr, flag)
 {
 	register *tp;
 
 	if(tp = syttyp())
-	(*cdevsw[tp->t_dev.d_major].d_sgtty)(tp->t_dev, flag);
+	(*cdevsw[tp->t_dev.d_major].d_sgtty)(tp->t_dev, cmd, addr, flag);
 }
 
 syttyp()

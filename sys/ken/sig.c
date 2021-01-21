@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1974 Bell Telephone Laboratories Inc
  */
 
 #include "../param.h"
@@ -63,8 +64,6 @@ int *p;
 {
 	register *rp;
 
-	if(sig >= NSIG)
-		return;
 	rp = p;
 	if(rp->p_sig != SIGKIL)
 		rp->p_sig = sig;
@@ -84,6 +83,9 @@ int *p;
  * directly to a process; it sets
  * a flag that asks the process to
  * do something to itself.
+ * UBC MOD:
+ * if a negative signal number is sent then go to sleep
+ * until something wakes us up (like a kill(pid,0))
  */
 issig()
 {
@@ -97,6 +99,8 @@ issig()
 			if ((n = p->p_sig) == 0)
 				return(0);
 		}
+		if (n < 0)
+			{ p->p_sig = 0; sleep(&p->p_sig,PWAIT); return(0); }
 		if((u.u_signal[n]&1) == 0)
 			return(n);
 	}
@@ -197,12 +201,8 @@ core()
 		if(u.u_error)
 			return(0);
 		ip = maknode(0666);
-		if(ip == NULL)
-			return(0);
 	}
-	if(!access(ip, IWRITE) &&
-	   (ip->i_mode&IFMT) == 0 &&
-	   u.u_uid == u.u_ruid) {
+	if(!access(ip, IWRITE)) {
 		itrunc(ip);
 		u.u_offset[0] = 0;
 		u.u_offset[1] = 0;
@@ -348,6 +348,8 @@ procxmt()
 		for (i=0; i<9; i++)
 			if (p == &u.u_ar0[regloc[i]])
 				goto ok;
+		if (p == &u.u_trap)
+			goto ok;
 		goto error;
 	ok:
 		if (p == &u.u_ar0[RPS]) {

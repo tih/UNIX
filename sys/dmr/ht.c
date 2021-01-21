@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 /*
@@ -26,17 +27,14 @@ struct {
 	int	htdt;
 	int	htsn;
 	int	httc;
-	int	htbae;	/* 11/70 bus extension */
 };
 
 struct	devtab	httab;
 struct	buf	rhtbuf;
 
-#define	NUNIT	8
-
-char	h_openf[NUNIT];
-char	*h_blkno[NUNIT];
-char	*h_nxrec[NUNIT];
+char	h_openf[8];
+char	*h_blkno[8];
+char	*h_nxrec[8];
 
 #define	HTADDR	0172440
 
@@ -48,7 +46,6 @@ char	*h_nxrec[NUNIT];
 #define	ERASE	024
 #define	REW	06
 #define	CLR	010
-#define	P800	01300		/* 800 + pdp11 mode */
 #define	P1600	02300		/* 1600 + pdp11 mode */
 #define	IENABLE	0100
 #define	CRDY	0200
@@ -65,14 +62,14 @@ htopen(dev, flag)
 {
 	register unit;
 
-	unit = dev.d_minor&077;
-	if (unit >= NUNIT || h_openf[unit])
+	unit = dev.d_minor;
+	if (h_openf[unit])
 		u.u_error = ENXIO;
 	else {
 		h_openf[unit]++;
 		h_blkno[unit] = 0;
 		h_nxrec[unit] = 65535;
-		hcommand(dev, NOP);
+		hcommand(unit, NOP);
 	}
 }
 
@@ -80,29 +77,25 @@ htclose(dev, flag)
 {
 	register int unit;
 
-	unit = dev.d_minor&077;
+	unit = dev.d_minor;
 	h_openf[unit] = 0;
 	if (flag) {
-		hcommand(dev, WEOF);
-		hcommand(dev, WEOF);
+		hcommand(unit, WEOF);
+		hcommand(unit, WEOF);
 	}
-	hcommand(dev, REW);
+	hcommand(unit, REW);
 }
 
-hcommand(dev, com)
+hcommand(unit, com)
 {
-	register unit;
 	extern lbolt;
 
-	unit = dev.d_minor;
 	while (httab.d_active || (HTADDR->htcs1 & CRDY)==0)
 		sleep(&lbolt, 1);
-	HTADDR->htcs2 = (unit>>3)&07;
+	HTADDR->htcs2 = unit>>3;
 	while((HTADDR->htds&DRY) == 0)
 		sleep(&lbolt, 1);
-	if(unit >= 64)
-		HTADDR->httc = P800 | (unit&07); else
-		HTADDR->httc = P1600 | (unit&07);
+	HTADDR->httc = P1600 | (unit&07);
 	while((HTADDR->htds&(MOL|PIP)) != MOL)
 		sleep(&lbolt, 1);
 	HTADDR->htcs1 = com | GO;
@@ -115,7 +108,7 @@ struct buf *abp;
 	register char **p;
 
 	bp = abp;
-	p = &h_nxrec[bp->b_dev.d_minor&077];
+	p = &h_nxrec[bp->b_dev.d_minor];
 	if (*p <= bp->b_blkno) {
 		if (*p < bp->b_blkno) {
 			bp->b_flags =| B_ERROR;
@@ -152,11 +145,8 @@ htstart()
 	if ((bp = httab.d_actf) == 0)
 		return;
 	unit = bp->b_dev.d_minor;
-	HTADDR->htcs2 = (unit>>3)&07;
-	if(unit >= 64)
-		HTADDR->httc = P800 | (unit&07); else
-		HTADDR->httc = P1600 | (unit&07);
-	unit =& 077;
+	HTADDR->htcs2 = unit>>3;
+	HTADDR->httc = P1600 | (unit&07);
 	blkno = h_blkno[unit];
 	if (h_openf[unit] < 0 || (HTADDR->htcs1 & CRDY)==0) {
 		bp->b_flags =| B_ERROR;
@@ -180,7 +170,7 @@ htstart()
 		return;
 	}
 	httab.d_active = SIO;
-	rhstart(bp, &HTADDR->htfc, bp->b_wcount<<1, &HTADDR->htbae);
+	rhstart(bp, &HTADDR->htfc, bp->b_wcount<<1);
 }
 
 htintr()
@@ -190,10 +180,10 @@ htintr()
 
 	if ((bp = httab.d_actf)==0)
 		return;
-	unit = bp->b_dev.d_minor&077;
+	unit = bp->b_dev.d_minor;
 	if (HTADDR->htcs1 & ERR) {
 /*
-		deverror(bp, HTADDR->hter, 0);
+		deverror(bp, HTADDR->hter);
  */
 		if(HTADDR->htds&EOF) {
 			if(bp != &rhtbuf && h_openf[unit])

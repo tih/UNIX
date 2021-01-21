@@ -1,0 +1,32 @@
+#
+/* RM04 definitions (extended RM02) */
+#define	NSECTORS	32	/* number of sectors/track */
+#define	NSURFACES	19	/* number of surfaces (heads) */
+#define Csize	(NSECTORS*NSURFACES)	/* RM04 cylinder capacity (608b) */
+/*
+ * total capacity = 823*32*19 = 500,384 blocks 
+ * divided up into 8 (100 cyl) devices (hm0...hm7)
+ * and one 23 cyl device (hm8).
+ * hm9 ... hm15 allow access to last 50 cyls of hm0...hm6.
+ */
+
+	100*Csize,	0,	/* hm0 - 100 cylinders */
+	100*Csize,	100,	/* hm1 - 100 cylinders  */
+	100*Csize,	200,	/* hm2 - 100 cylinders */
+	100*Csize,	300,	/* hm3 - 100 cylinders */
+
+	100*Csize,	400,	/* hm4 - 100 cylinders */
+	100*Csize,	500,	/* hm5 - 100 cylinders */
+	100*Csize,	600,	/* hm6 - 100 cylinders */
+	100*Csize,	700,	/* hm7 - 100 cylinders */
+
+	 23*Csize, 	800,	/* hm8 - last 23 cylinders */
+	50*Csize,	 50,	/* hm9 - last 50 cylinders of hm0 */
+	50*Csize,	150,	/* hm10 - last 50 cylinders of hm1 */
+	50*Csize,	250,	/* hm11 - last 50 cylinders of hm2 */
+
+	50*Csize,	350,	/* hm12 - last 50 cylinders of hm3 */
+	50*Csize,	450,	/* hm13 - last 50 cylinders of hm4 */
+	50*Csize,	550,	/* hm14 - last 50 cylinders of hm5 */
+	50*Csize,	650,	/* hm15 - last 50 cylinders of hm6 */
+

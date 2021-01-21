@@ -1,0 +1,25 @@
+# definitions of character devices */
+#	open	    close	read	write	sgtty		dev name driver
+	&klopen,   &klclose,  &klread,   &klwrite,  &klsgtty,	/*  0 tty console */
+	&pcopen,   &pcclose,  &pcread,   &pcwrite,  &nodev,     /*  1 ppt pc */
+	&lpopen,   &lpclose,  &nodev,    &lpwrite,  &nodev,     /*  2 lp  lp */
+	&dhopen,  &dhclose,   &dhread,   &dhwrite,   &dhsgtty,	/*  3 tty dc */
+	&dhopen,  &dhclose,   &dhread,   &dhwrite,   &dhsgtty,	/*  4 tty dh */
+	&nodev,    &nodev,    &nodev,    &nodev,    &nodev,	/*  5 dp  dp */
+	&dhopen,  &dhclose,   &dhread,   &dhwrite,   &dhsgtty,	/*  6 tty dj */
+	&nodev,    &nodev,    &nodev,    &nodev,    &nodev,	/*  7 dn  dn */
+	&nulldev,  &nulldev,  &mmread,   &mmwrite,  &nodev,	/*  8 mem mem */
+	&syopen,   &nulldev,  &syread,   &sywrite,  &sysgtty,   /*  9 tty sys */
+	&nulldev,  &nulldev,  &rkread,   &rkwrite,  &nodev,	/* 10 rrk rk */
+	&rx2open,  &nulldev,  &rx2read,  &rx2write, &rx2sgtty,	/* 11 rrx rx2 */
+	&nulldev,  &nulldev,  &rpread,   &rpwrite,  &nodev,	/* 12 rrp rp */
+	&tmopen,   &tmclose,  &tmread,   &tmwrite,  &tmstty,    /* 13 rmt tm */
+        &iropen,   &irclose,  &irread,   &nodev,     &nodev,    /* 14 ir  ir */
+	&hmopen,   &nodev,    &hmread,   &hmwrite,  &nodev,	/* 15 rhm hm */
+	&cropen,   &crclose,  &crread,   &nodev,    &nodev,	/* 16 cr  cr */
+	&xyopen,   &xyclose,  &nodev,    &xywrite,  &nodev,	/* 17 xy  xy */
+	&nulldev,  &nulldev,  &rlread,   &rlwrite,  &nodev,	/* 18 rrl rl */
+	&dupopen, &dupclose,  &dupread,  &dupwrite,   &nodev,	/* 19 dup dup */
+	&dzopen,  &dzclose,   &dzread,   &dzwrite,   &dzsgtty,	/* 20 tty dz */
+	&stopen,  &stclose,   &stread,   &nodev,     &nodev,	/* 21 stat stat */
+	&fakeopen, &fakeclose, &fakeread,&fakewrite,&fakesgtty, /* 22 tty fake */

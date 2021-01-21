@@ -1,4 +1,8 @@
 #
+/*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
+ */
+
 #include "../param.h"
 #include "../inode.h"
 #include "../user.h"
@@ -12,7 +16,7 @@
  * func = function called to get next char of name
  *	&uchar if name is in user space
  *	&schar if name is in system space
- * flag = 0 if name is sought
+ * flag = 0 if name is saught
  *	1 if name is to be created
  *	2 if name is to be deleted
  */

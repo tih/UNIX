@@ -1,11 +1,17 @@
 #
+/*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
+ */
+
 #include "../param.h"
 #include "../systm.h"
 #include "../user.h"
 #include "../proc.h"
+#include "../reg.h"
+#include "../seg.h"
+#include "../buf.h"
 
 #define	UMODE	0170000
-#define	SCHMAG	10
 
 /*
  * clock is called straight from
@@ -19,14 +25,14 @@
  *	maintain date
  *	profile
  *	tout wakeup (sys sleep)
- *	lightning bolt wakeup (every 4 sec)
- *	alarm clock signals
- *	jab the scheduler
+ *	lighting bolt wakeup (every 4 sec)
+ *	jab the scheduler every second
  */
 clock(dev, sp, r1, nps, r0, pc, ps)
 {
 	register struct callo *p1, *p2;
 	register struct proc *pp;
+	extern struct buf swbuf;
 
 	/*
 	 * restart clock
@@ -58,7 +64,7 @@ clock(dev, sp, r1, nps, r0, pc, ps)
 	 */
 
 	if((ps&0340) != 0)
-		goto out;
+		goto out;		/* we were not at low priority */
 
 	/*
 	 * callout
@@ -87,14 +93,14 @@ clock(dev, sp, r1, nps, r0, pc, ps)
 
 out:
 	if((ps&UMODE) == UMODE) {
-		u.u_utime++;
+		if (++u.u_utime[1]== 0)
+			++u.u_utime[0];
 		if(u.u_prof[3])
-			incupc(pc, u.u_prof);
+			incupc(((u.u_prof[2]&1) ? (&r0)->r[R4] : pc), u.u_prof);
 	} else
 		u.u_stime++;
-	pp = u.u_procp;
-	if(++pp->p_cpu == 0)
-		pp->p_cpu--;
+	if(u.u_dsleep < 200*HZ)
+		u.u_dsleep++;
 	if(++lbolt >= HZ) {
 		if((ps&0340) != 0)
 			return;
@@ -108,17 +114,20 @@ out:
 			runrun++;
 			wakeup(&lbolt);
 		}
-		for(pp = &proc[0]; pp < &proc[NPROC]; pp++)
-		if (pp->p_stat) {
+		for(pp = &proc[0]; pp < &proc[NPROC]; pp++) {
 			if(pp->p_time != 127)
 				pp->p_time++;
-			if((pp->p_cpu & 0377) > SCHMAG)
-				pp->p_cpu =- SCHMAG; else
-				pp->p_cpu = 0;
-			if(pp->p_pri > PUSER)
-				setpri(pp);
-		}
+			if (pp->p_clktim)
+				if (--pp->p_clktim == 0)
+					psignal(pp, SIGCLK);
+			}
+#ifdef SLOWSWAP
+		/* if swap device is busy don't try to start another swap */
+		if((swbuf.b_flags&(B_BUSY|B_WANTED)) == 0 && runin!=0) {
+#endif
+#ifndef SLOWSWAP
 		if(runin!=0) {
+#endif
 			runin = 0;
 			wakeup(&runin);
 		}
@@ -126,7 +135,7 @@ out:
 			u.u_ar0 = &r0;
 			if(issig())
 				psig();
-			setpri(u.u_procp);
+			setpri();
 		}
 	}
 }
@@ -160,6 +169,8 @@ timeout(fun, arg, tim)
 	p2 = p1;
 	while(p2->c_func != 0)
 		p2++;
+	if (p2 >= &callout[NCALL-1])
+		panic("too many timeouts");
 	while(p2 >= p1) {
 		(p2+1)->c_time = p2->c_time;
 		(p2+1)->c_func = p2->c_func;

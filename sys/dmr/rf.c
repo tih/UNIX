@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 /*
@@ -37,8 +38,6 @@ struct buf *abp;
 	register struct buf *bp;
 
 	bp = abp;
-	if(bp->b_flags&B_PHYS)
-		mapalloc(bp);
 	if (bp->b_blkno >= NRFBLK*(bp->b_dev.d_minor+1)) {
 		bp->b_flags =| B_ERROR;
 		iodone(bp);
@@ -76,7 +75,7 @@ rfintr()
 	bp = rftab.d_actf;
 	rftab.d_active = 0;
 	if (RFADDR->rfcs < 0) {		/* error bit */
-		deverror(bp, RFADDR->rfcs, RFADDR->rfdae);
+		deverror(bp, RFADDR->rfcs);
 		RFADDR->rfcs = CTLCLR;
 		if (++rftab.d_errcnt <= 10) {
 			rfstart();

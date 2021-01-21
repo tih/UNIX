@@ -1,0 +1,11 @@
+# definitions of block devices
+#
+#	open		close		strategy	table	 maj dev driver
+#
+	&nulldev,	&nulldev,	&rkstrategy,	&rktab, /*  0 rk rk */
+	&nulldev,	&nulldev,	&rpstrategy,	&rptab, /*  1 rp rp */
+	&nulldev,	&nulldev,	&rlstrategy,	&rltab, /*  2 rl rl */
+	&tmopen,	&tmclose,	&tmstrategy,	&tmtab,	/*  3 mt tm */
+	&nulldev,	&tcclose,	&tcstrategy, 	&tctab,	/*  4 tap tc */
+	&rx2open,	&nulldev,	&rx2strategy,	&rx2tab,/*  5 rx rx2 */
+	&hmopen,	&nulldev,	&hmstrategy,	&hmtab,	/*  6 hm hm */

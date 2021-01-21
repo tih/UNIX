@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 /*
@@ -34,8 +35,8 @@ struct {
 	9200,	360,		/* cyl 360 thru 405 */
 	-1,	0,		/* cyl 0 thru 327 */
 	-1,	78,		/* cyl 78 thru 405 */
-	15600,	0,		/* cyl 0 thru 77 */
-	15600,	328,		/* cyl 328 thru 405 */
+	0,	0,		/* cyl X thru Y */
+	0,	0,		/* cyl X thru Y */
 };
 
 struct	devtab	rptab;
@@ -43,6 +44,8 @@ struct	buf	rrpbuf;
 
 #define	GO	01
 #define	RESET	0
+#define	RCOM	02
+#define	WCOM	04
 #define	HSEEK	014
 
 #define	IENABLE	0100
@@ -68,8 +71,6 @@ struct buf *abp;
 	register char *p1, *p2;
 
 	bp = abp;
-	if(bp->b_flags&B_PHYS)
-		mapalloc(bp);
 	p1 = &rp_sizes[bp->b_dev.d_minor&07];
 	if (bp->b_dev.d_minor >= (NRP<<3) ||
 	    bp->b_blkno >= p1->nblocks) {
@@ -124,7 +125,7 @@ rpintr()
 	bp = rptab.d_actf;
 	rptab.d_active = 0;
 	if (RPADDR->rpcs < 0) {		/* error bit */
-		deverror(bp, RPADDR->rper, RPADDR->rpds);
+		deverror(bp, RPADDR->rper);
 		if(RPADDR->rpds & (SUFU|SUSI|HNF)) {
 			RPADDR->rpcs.lobyte = HSEEK|GO;
 			ctr = 0;

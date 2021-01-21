@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 #include "../param.h"
@@ -81,27 +82,41 @@ printn(n, b)
  * If the switches are 0, all
  * printing is inhibited.
  */
+
+#ifdef ERRLOG
+#define LOG_MAX 128
+char msgbuf[LOG_MAX];
+char *msgbufp msgbuf;
+#endif
+
 putchar(c)
 {
 	register rc, s;
+	register char *p;
 
 	rc = c;
-	if(SW->integ == 0)
+#ifdef ERRLOG
+	*msgbufp++ = rc;
+	if (msgbufp >= msgbuf+LOG_MAX)
+		msgbufp = msgbuf;
+#endif
+	if(sws() == 0)
 		return;
-	while((KL->xsr&0200) == 0)
+	p = KL;
+	while((p->xsr&0200) == 0)
 		;
 	if(rc == 0)
 		return;
-	s = KL->xsr;
-	KL->xsr = 0;
-	KL->xbr = rc;
+	s = p->xsr;
+	p->xsr = 0;
+	p->xbr = rc;
 	if(rc == '\n') {
 		putchar('\r');
 		putchar(0177);
 		putchar(0177);
 	}
 	putchar(0);
-	KL->xsr = s;
+	p->xsr = s;
 }
 
 /*
@@ -114,8 +129,8 @@ panic(s)
 char *s;
 {
 	panicstr = s;
-	update();
 	printf("panic: %s\n", s);
+	update();
 	for(;;)
 		idle();
 }
@@ -126,10 +141,19 @@ char *s;
  * x and y are the major and minor parts of
  * the device argument.
  */
+char *devnames[];
 prdev(str, dev)
 {
+	register int i;
+	register char *p;
 
-	printf("%s on dev %l/%l\n", str, dev.d_major, dev.d_minor);
+	for (i=0; p = devnames[i]; ++i)
+		if (i == dev.d_major)
+			break;
+	if (p == 0)
+		printf("%s on dev %l/%l\n", str, dev.d_major, dev.d_minor);
+	else
+		printf("%s on /dev/%s%l\n", str, p, dev.d_minor);
 }
 
 /*
@@ -139,12 +163,12 @@ prdev(str, dev)
  * and an octal word (usually some error
  * status register) passed as argument.
  */
-deverror(bp, o1, o2)
+deverror(bp, oct)
 int *bp;
 {
 	register *rbp;
 
 	rbp = bp;
-	prdev("err", rbp->b_dev);
-	printf("bn%l er%o %o\n", rbp->b_blkno, o1, o2);
+	prdev("deverr", rbp->b_dev);
+	printf("bn = %l eo = %o\n", rbp->b_blkno, oct);
 }

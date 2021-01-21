@@ -62,11 +62,11 @@ char **argv;
  *  Copy out data first
  */
 	tbuf[1] = 0;
-	seek(tbuf[0], 020+txtsiz, 0);
-	seek(rbuf[0], 020+txtsiz, 0);
-	seek(rbuf[0], txtsiz, 1);
-	seek(rbuf[0], datsiz, 1);
-	s = datsiz >> 1;
+	tseek(tbuf[0], 020+txtsiz, 0);
+	tseek(rbuf[0], 020+datsiz, 0);
+	tseek(rbuf[0], txtsiz, 1);
+	tseek(rbuf[0], txtsiz, 1);
+	s = (datsiz >> 1) & 077777;
 	while (s--) {
 		word = getw(tbuf);
 		rel = getw(rbuf);
@@ -80,10 +80,10 @@ char **argv;
  */
 	rbuf[1] = 0;
 	tbuf[1] = 0;
-	seek(rbuf[0], 020+txtsiz, 0);
-	seek(rbuf[0], datsiz, 1);
-	seek(tbuf[0], 020, 0);
-	s = txtsiz >> 1;
+	tseek(rbuf[0], 020+datsiz, 0);
+	tseek(rbuf[0], txtsiz, 1);
+	tseek(tbuf[0], 020, 0);
+	s = (txtsiz >> 1)&077777;
 	while(s--) {
 		rel = getw(rbuf);
 		word = getw(tbuf);
@@ -96,10 +96,11 @@ char **argv;
  * The symbol table.
  */
 	tbuf[1] = 0;
-	seek(tbuf[0], 020+txtsiz, 0);
-	seek(tbuf[0], txtsiz, 1);
-	seek(tbuf[0], datsiz, 1);
-	seek(tbuf[0], datsiz, 1);
+	tseek(tbuf[0], 020, 0);
+	tseek(tbuf[0], txtsiz, 1);
+	tseek(tbuf[0], txtsiz, 1);
+	tseek(tbuf[0], datsiz, 1);
+	tseek(tbuf[0], datsiz, 1);
 	s = symsiz;
 	while ((s =- 12) >= 0) {
 		putw(getw(tbuf), obuf);
@@ -142,5 +143,18 @@ getrel(r)
 	default:
 		printf("Bad relocation %o\n", r);
 		return(0);
+	}
+}
+tseek(des,off,how)
+{
+register int n;
+
+if (!(how == 1 && off < 0))
+	seek(des,off,how);
+else
+	{
+	n = (off>>1)&077777;
+	seek(des,n,how);
+	seek(des,n,how);
 	}
 }

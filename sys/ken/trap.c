@@ -1,10 +1,20 @@
 #
+
+#ifdef maint
+int bad_cpu 0;
+#endif
+
+/*
+ *	Copyright 1975 Bell Telephone Laboratories Inc
+ */
+
 #include "../param.h"
 #include "../systm.h"
 #include "../user.h"
 #include "../proc.h"
 #include "../reg.h"
 #include "../seg.h"
+#include "../V7.h"
 
 #define	EBIT	1		/* user error bit in PS: C-bit */
 #define	UMODE	0170000		/* user-mode bits in PS word */
@@ -41,8 +51,12 @@ char	regloc[9]
  */
 trap(dev, sp, r1, nps, r0, pc, ps)
 {
+#ifdef V7CODE
+	extern char v7map[];
+#endif
 	register i, a;
 	register struct sysent *callp;
+	extern char sureg;
 
 	savfp();
 	if ((ps&UMODE) == UMODE)
@@ -50,6 +64,16 @@ trap(dev, sp, r1, nps, r0, pc, ps)
 	u.u_ar0 = &r0;
 	switch(dev) {
 
+	case 07:
+		parityerror();
+		if (pc == &sureg+050)
+			{
+			((&r0)->r[R4])->r[0] = 0;	/* reset memory */
+			pc =- 2;
+			(&r0)->r[R4] =+ 2;	/* prepare to re-execute */
+			printf("re-executing the bad instruction\n");
+			return;
+			}
 	/*
 	 * Trap not expected.
 	 * Usually a kernel mode bus error.
@@ -64,13 +88,26 @@ trap(dev, sp, r1, nps, r0, pc, ps)
 	default:
 		printf("ka6 = %o\n", *ka6);
 		printf("aps = %o\n", &ps);
+		printf("regs ");
+		for (i=0; i<9; ++i)
+			printf(" %o",(&r0)->r[regloc[i]]);
+		printf("\n");
 		printf("trap type %o\n", dev);
 		panic("trap");
 
 	case 0+USER: /* bus error */
+#ifdef	maint
+		if(bad_cpu)
+			printf("bus trap @ %o + %o00\n",pc,UISA->r[0]);
+#endif
 		i = SIGBUS;
 		break;
 
+	case 7+USER:		/* parity trap in user mode */
+		parityerror();
+		printf("parity error pc = %o + %o00\n",pc,UISA->r[0]);
+		i = SIGBUS;		/* pretend its a bus error */
+		break;
 	/*
 	 * If illegal instructions are not
 	 * being caught and the offending instruction
@@ -97,35 +134,55 @@ trap(dev, sp, r1, nps, r0, pc, ps)
 		i = SIGEMT;
 		break;
 
+	case 10:	/* random interrupt thru loc 0 */
+	case 10+USER:
+		printf("Random interrupt ignored\n");
+		return;
+
 	case 6+USER: /* sys call */
 		u.u_error = 0;
-		ps =& ~EBIT;
-		callp = &sysent[fuiword(pc-2)&077];
-		if (callp == sysent) { /* indirect */
-			a = fuiword(pc);
-			pc =+ 2;
-			i = fuword(a);
-			if ((i & ~077) != SYS)
-				i = 077;	/* illegal */
-			callp = &sysent[i&077];
-			for(i=0; i<callp->count; i++)
-				u.u_arg[i] = fuword(a =+ 2);
-		} else {
-			for(i=0; i<callp->count; i++) {
-				u.u_arg[i] = fuiword(pc);
+		if(u.u_trap==0 || fuword(u.u_trap)==0) {
+			/* normal (not intercepted) trap ins */
+			ps =& ~EBIT;
+			i = fuiword(pc-2)&077;
+#ifdef V7CODE
+			if (V7)
+				i = v7map[i];
+			u.u_call = i;
+#endif
+			callp = &sysent[i];
+			if (callp == sysent) { /* indirect */
+				a = fuiword(pc);
 				pc =+ 2;
+				i = fuword(a);
+				if ((i & ~077) != SYS)
+					i = 077;	/* illegal */
+				i =& 077;
+#ifdef V7CODE
+				if (V7)
+					i = v7map[i];
+				u.u_call = i;
+#endif
+				callp = &sysent[i];
+				for(i=0; i<callp->count; i++)
+					u.u_arg[i] = fuword(a =+ 2);
+			} else {
+				for(i=0; i<callp->count; i++) {
+					u.u_arg[i] = fuiword(pc);
+					pc =+ 2;
+				}
 			}
-		}
-		u.u_dirp = u.u_arg[0];
-		trap1(callp->call);
-		if(u.u_intflg)
-			u.u_error = EINTR;
-		if(u.u_error < 100) {
-			if(u.u_error) {
-				ps =| EBIT;
-				r0 = u.u_error;
+			u.u_dirp = u.u_arg[0];
+			trap1(callp->call);
+			if(u.u_intflg)
+				u.u_error = EINTR;
+			if(u.u_error < 100) {
+				if(u.u_error) {
+					ps =| EBIT;
+					r0 = u.u_error;
+				}
+				goto out;
 			}
-			goto out;
 		}
 		i = SIGSYS;
 		break;
@@ -139,11 +196,13 @@ trap(dev, sp, r1, nps, r0, pc, ps)
 	 * up later.
 	 */
 	case 8: /* floating exception */
+		++runrun;			/* insure we pick it up */
 		psignal(u.u_procp, SIGFPT);
 		return;
 
 	case 8+USER:
 		i = SIGFPT;
+		++runrun;			/* insure we pick it up */
 		break;
 
 	/*
@@ -169,7 +228,7 @@ trap(dev, sp, r1, nps, r0, pc, ps)
 out:
 	if(issig())
 		psig();
-	setpri(u.u_procp);
+	setpri();
 }
 
 /*
@@ -179,12 +238,6 @@ out:
  * during processing, an (abnormal) return is simulated from
  * the last caller to savu(qsav); if this took place
  * inside of trap, it wouldn't have a chance to clean up.
- *
- * If this occurs, the return takes place without
- * clearing u_intflg; if it's still set, trap
- * marks an error which means that a system
- * call (like read on a typewriter) got interrupted
- * by a signal.
  */
 trap1(f)
 int (*f)();
@@ -209,4 +262,35 @@ nosys()
  */
 nullsys()
 {
+}
+
+char *parregs[]
+{ 0172100, 0172102, 0 };
+
+parityerror()
+{
+register char **p;
+register int *s;
+register char *q;
+int n;
+
+printf("%d: ",u.u_procp->p_pid);
+for (p=parregs; s = *p++; )
+	{
+	if (*s < 0)	/* got error ? */
+		{
+		printf("parity error at %o000 csr=%o %o\n",(*s>>5)&0177,s,*s);
+		for (q = 0140000; q < 0142000; q =+ 2)	/* check out u. */
+			{
+			*s = 0;
+			n = q->r[0];
+			if (*s < 0)
+				{
+				printf("address %o data %o\n",q,n);
+				q->r[0] = n;
+				}
+			}
+		*s =| 01;	/* enable parity again */
+		}
+	}
 }

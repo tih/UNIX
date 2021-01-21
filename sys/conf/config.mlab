@@ -1,0 +1,12 @@
+# configuration for Extended Care Pathology system with RL
+console
+sys
+mem
+rl
+rx2
+root rl 0
+swap rl 0 19000 1480
+cpu	23
+fpu
+dl 5
+ltc

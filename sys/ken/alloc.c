@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 #include "../param.h"
@@ -80,10 +81,12 @@ alloc(dev)
 	bp = getblk(dev, bno);
 	clrbuf(bp);
 	fp->s_fmod = 1;
+	fp->s_freecnt--;
 	return(bp);
 
 nospace:
 	fp->s_nfree = 0;
+	fp->s_freecnt = 0;
 	prdev("no space", dev);
 	u.u_error = ENOSPC;
 	return(NULL);
@@ -121,6 +124,7 @@ free(dev, bno)
 	}
 	fp->s_free[fp->s_nfree++] = bno;
 	fp->s_fmod = 1;
+	fp->s_freecnt++;
 }
 
 /*
@@ -306,7 +310,7 @@ update()
 	for(ip = &inode[0]; ip < &inode[NINODE]; ip++)
 		if((ip->i_flag&ILOCK) == 0) {
 			ip->i_flag =| ILOCK;
-			iupdat(ip, time);
+			iupdat(ip, time, time);
 			prele(ip);
 		}
 	updlock = 0;

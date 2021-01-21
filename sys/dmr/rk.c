@@ -1,5 +1,6 @@
 #
 /*
+ *	Copyright 1973 Bell Telephone Laboratories Inc
  */
 
 /*
@@ -24,6 +25,7 @@
 #define	WLO	020000
 #define	CTLRDY	0200
 
+#define	LATE	01000		/* bus didn't get there in time */
 struct {
 	int rkds;
 	int rker;
@@ -36,16 +38,18 @@ struct {
 struct	devtab	rktab;
 struct	buf	rrkbuf;
 
+#ifdef HMRK
+struct	devtab	hmtab;		/* if both in use */
+#endif
+
 rkstrategy(abp)
 struct buf *abp;
 {
 	register struct buf *bp;
-	register *qc, *ql;
+	register char *p1, *p2;
 	int d;
 
 	bp = abp;
-	if(bp->b_flags&B_PHYS)
-		mapalloc(bp);
 	d = bp->b_dev.d_minor-7;
 	if(d <= 0)
 		d = 1;
@@ -56,11 +60,19 @@ struct buf *abp;
 	}
 	bp->av_forw = 0;
 	spl5();
-	if (rktab.d_actf==0)
+	if ((p1 = rktab.d_actf)==0)
 		rktab.d_actf = bp;
-	else
-		rktab.d_actl->av_forw = bp;
-	rktab.d_actl = bp;
+	else {
+		for (; p2 = p1->av_forw; p1 = p2) {
+			if (p1->b_blkno <= bp->b_blkno
+			 && bp->b_blkno <  p2->b_blkno
+			 || p1->b_blkno >= bp->b_blkno
+			 && bp->b_blkno >  p2->b_blkno) 
+				break;
+		}
+		bp->av_forw = p2;
+		p1->av_forw = bp;
+	}
 	if (rktab.d_active==0)
 		rkstart();
 	spl0();
@@ -89,8 +101,18 @@ rkstart()
 {
 	register struct buf *bp;
 
+#ifdef HMRK
+	if (hmtab.d_active)
+		return;		/* if hm active then quit */
+#endif
 	if ((bp = rktab.d_actf) == 0)
+		{
+#ifdef HMRK
+		if (hmtab.d_actf)
+			hmstart();	/* no rk io ... start hm */
+#endif
 		return;
+		}
 	rktab.d_active++;
 	devstart(bp, &RKADDR->rkda, rkaddr(bp), 0);
 }
@@ -104,7 +126,8 @@ rkintr()
 	bp = rktab.d_actf;
 	rktab.d_active = 0;
 	if (RKADDR->rkcs < 0) {		/* error bit */
-		deverror(bp, RKADDR->rker, RKADDR->rkds);
+		if ((RKADDR->rker&LATE) == 0)
+			deverror(bp, RKADDR->rker);
 		RKADDR->rkcs = RESET|GO;
 		while((RKADDR->rkcs&CTLRDY) == 0) ;
 		if (++rktab.d_errcnt <= 10) {
