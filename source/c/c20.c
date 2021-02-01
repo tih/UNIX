@@ -70,6 +70,7 @@ char **argv;
 	extern fin, fout;
 	int nflag;
 
+	nflag = 0;
 	if (argc>1 && argv[1][0]=='+') {
 		argc--;
 		argv++;

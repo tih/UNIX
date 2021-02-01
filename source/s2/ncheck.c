@@ -2,8 +2,9 @@
 
 char	*dargv[]
 {
-	"/dev/rrk2",
-	"/dev/rrp0",
+	"/dev/rra0a",
+	"/dev/rra0b",
+	"/dev/rra0d",
 	0
 };
 

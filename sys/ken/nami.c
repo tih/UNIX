@@ -20,6 +20,8 @@ namei(func, flag)
 int (*func)();
 {
 	register struct inode *dp;
+	struct inode *rp;
+	struct mount *mp;
 	register c;
 	register char *cp;
 	int eo, *bp;
@@ -52,19 +54,6 @@ cloop:
 		return(dp);
 
 	/*
-	 * If there is another component,
-	 * dp must be a directory and
-	 * must have x permission.
-	 */
-
-	if((dp->i_mode&IFMT) != IFDIR) {
-		u.u_error = ENOTDIR;
-		goto out;
-	}
-	if(access(dp, IEXEC))
-		goto out;
-
-	/*
 	 * Gather up name into
 	 * users' dir buffer.
 	 */
@@ -79,6 +68,45 @@ cloop:
 		*cp++ = '\0';
 	while(c == '/')
 		c = (*func)();
+
+	/*
+	 * If the entry ".." is searched in the root
+	 * directory of a mounted filesystem, search
+	 * in the mount point directory instead.
+	 */
+
+	 cp = &u.u_dbuf[0];
+	 if(dp->i_number == ROOTINO && dp->i_dev != rootdev &&
+	    *cp++ == '.' && *cp++ == '.' && *cp == 0) {
+		rp = NULL;
+		for (mp = &mount[0]; mp < &mount[NMOUNT]; mp++) {
+			if(mp->m_bufp != NULL && mp->m_dev == dp->i_dev) {
+				rp = mp->m_inodp;
+				break;
+			}
+		}
+		if(rp != NULL && (rp->i_mode&IFMT) == IFDIR) {
+			rp->i_flag =| ILOCK;
+			rp->i_count++;
+			iput(dp);
+			dp = rp;
+		}
+	}
+
+
+	/*
+	 * If there is another component,
+	 * dp must be a directory and
+	 * must have x permission.
+	 */
+
+	if((dp->i_mode&IFMT) != IFDIR) {
+		u.u_error = ENOTDIR;
+		goto out;
+	}
+	if(access(dp, IEXEC))
+		goto out;
+
 	if(u.u_error)
 		goto out;
 

@@ -1,8 +1,9 @@
 char	*dargv[]
 {
 	0,
-	"/dev/rk2",
-	"/dev/rp0",
+	"/dev/ra0a",
+	"/dev/ra0b",
+	"/dev/ra0d",
 	0
 };
 struct

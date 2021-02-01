@@ -212,10 +212,16 @@ print() {
 	return(1);
 }
 mtime(p) struct { int f, t, s; } *p;  {
-	return(scomp((now[0]-statb.imtime[0])*3/4,p->t,p->s));
+	if (p->t < 8192 && p->t > -8192)
+		return(scomp(now[0]-statb.imtime[0],p->t*4/3,p->s));
+	else
+		return(scomp(now[0]-statb.imtime[0],p->t/3*4,p->s));
 }
 atime(p) struct { int f, t, s; } *p;  {
-	return(scomp((now[0]-statb.iatime[0])*3/4,p->t,p->s));
+	if (p->t < 8192 && p->t > -8192)
+		return(scomp(now[0]-statb.iatime[0],p->t*4/3,p->s));
+	else
+		return(scomp(now[0]-statb.iatime[0],p->t/3*4,p->s));
 }
 user(p) struct { int f, u, s; } *p;  {
 	return(scomp(statb.iuid,p->u,p->s));

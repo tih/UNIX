@@ -91,7 +91,10 @@ gtime()
 		goto bad;
 	timbuf[0] = 0;
 	timbuf[1] = 0;
-	y =+ 1900;
+	if (y < 50)
+		y =+ 2000;
+	else
+		y =+ 1900;
 	for(i=1970; i<y; i++)
 		gdadd(dysize(i));
 	/* Leap year */

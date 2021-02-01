@@ -2,8 +2,9 @@
 
 char	*dargv[]
 {
-	"/dev/rrk2",
-	"/dev/rrp0",
+	"/dev/rra0a",
+	"/dev/rra0b",
+	"/dev/rra0d",
 	0
 };
 
@@ -72,7 +73,10 @@ check(file)
 char *file;
 {
 	register i, j;
-	fi = open(file, 0);
+	if (sflg)
+		fi = open(file, 2);
+	else
+		fi = open(file, 0);
 	if(fi < 0) {
 		printf("cannot open %s\n", file);
 		return;
@@ -91,6 +95,7 @@ char *file;
 	}
 	for (i=0; i<nfiles; i++)
 		ecount[i] = 0;
+	ino = 0;
 	for(i=0; ino<nfiles; i =+ NINODE/16) {
 		bread(i+2, inode, sizeof inode);
 		for(j=0; j<NINODE && ino<nfiles; j++) {
@@ -103,7 +108,11 @@ char *file;
 		bread(i+2, inode, sizeof inode);
 		for (j=0; j<NINODE && ino<nfiles; j++) {
 			ino++;
-			pass2(&inode[j]);
+			if (pass2(&inode[j])) {
+				printf("i: %d, j: %d, ino: %d\n", i, j, ino);
+				printf("ecount[ino]: %d, inode[j].nlink: %d\n", ecount[ino], inode[j].i_nlink);
+				bwrite(i+2+j/16, inode + j/16*16);
+			}
 		}
 	}
 }
@@ -141,15 +150,21 @@ pass2(aip)
 	ip = aip;
 	i = ino;
 	if ((ip->i_mode&IALLOC)==0 && ecount[i]==0)
-		return;
+		return 0;
 	if (ip->i_nlink==ecount[i] && ip->i_nlink!=0)
-		return;
+		return 0;
 	if (headpr==0) {
 		printf("entries	link cnt\n");
 		headpr++;
 	}
 	printf("%l	%d	%d\n", ino,
 	    ecount[i]&0377, ip->i_nlink&0377);
+	if ((ip->i_nlink&0377) > (ecount[i]&0377) && sflg) {
+		ip->i_nlink = ecount[i];
+		printf("corrected\n");
+		return 1;
+	} else
+		return 0;
 }
 
 dread(aip, aoff)

@@ -55,11 +55,11 @@ int	dmsize[12]
 	31
 };
 
-int timezone	5*60*60;
+int timezone    -1*60*60;
 int tzname[]
 {
-	"EST",
-	"EDT",
+	"CET",
+	"CEST",
 };
 int	daylight 1;	/* Allow daylight conversion */
 /*
@@ -104,7 +104,7 @@ int tim[];
 	dpadd(t, -timezone);
 	ct = gmtime(t);
 	dayno = ct[YDAY];
-	daylbegin = 119;	/* last Sun in Apr */
+	daylbegin = 89;		/* last Sun in Mar */
 	daylend = 303;		/* Last Sun in Oct */
 	if (ct[YEAR]==74 || ct[YEAR]==75) {
 		daylbegin = daytab[ct[YEAR]-74].daylb;
@@ -143,30 +143,31 @@ gmtime(tim)
 int tim[];
 {
 	register int d0, d1;
+	int d2;
 	register *tp;
 	static xtime[9];
-	extern int ldivr;
+	struct {char *h, *l;} a, b, q, r;
 
 	/*
-	 * break initial number into
-	 * multiples of 8 hours.
-	 * (28800 = 60*60*8)
+	 * break initial number into number of
+	 * days and number of seconds in the last day
 	 */
 
-	d0 = ldiv(tim[0], tim[1], 28800);
-	d1 = ldivr;
+	a.h = tim[0]; a.l = tim[1];
+	b.h = 1; b.l = 20864;	/* number of seconds per day */
+	d0 = ludiv(&a, &b, &q, &r);
 	tp = &xtime[0];
 
 	/*
 	 * generate hours:minutes:seconds
 	 */
 
+	b.h = 0;
+	b.l = 60;
+	d1 = ludiv(&r, &b, &q, &a);
+	*tp++ = a.l;
 	*tp++ = d1%60;
 	d1 =/ 60;
-	*tp++ = d1%60;
-	d1 =/ 60;
-	d1 =+ (d0%3)*8;
-	d0 =/ 3;
 	*tp++ = d1;
 
 	/*
@@ -222,7 +223,11 @@ int *t;
 	cp = ct_numb(cp, *--tp+100);
 	cp = ct_numb(cp, *--tp+100);
 	cp = ct_numb(cp, *--tp+100);
-	cp =+ 2;
+	if (t[YEAR] >= 100) {
+		*++cp = '2';
+		*++cp = '0';
+	} else
+		cp =+ 2;
 	cp = ct_numb(cp, t[YEAR]);
 	return(cbuf);
 }
@@ -246,4 +251,65 @@ ct_numb(acp, n)
 		*cp++ = ' ';
 	*cp++ = n%10 + '0';
 	return(cp);
+}
+ludiv(a, b, q, r)
+struct {char *h, *l;} *a, *b, *q, *r;
+
+{
+	int n;
+	struct {char *h, *l;} s;
+
+	if (b->h > a->h || (b->h == a->h && b->l > a->l)) {
+		q->h = q->l = 0;
+		r->h = a->h;
+		r->l = a->l;
+		return 0;
+	}
+	sub(r, a, b);
+	s.h = b->h;
+	s.l = b->l;
+	n = 0;
+	while (r->h > s.h || (r->h == s.h && r->l >= s.l)) {
+		sub(r, r, &s);
+		n++;
+		s.h =<< 1;
+		if (s.l & 1<<15)
+			s.h =| 1;
+		s.l =<< 1;
+	}
+	if (n > 15) {
+		q->l = 0; q->h = 1<<(n-16);
+	} else {
+		q->h = 0; q->l = 1<<n;
+	}
+	while (n != 0) {
+		n--;
+		s.l =>> 1;
+		if (s.h & 1)
+			s.l =| (1<<15);
+		else
+			s.l =& ~(1<<15);
+		s.h =>> 1;
+		s.h =& ~(1<<15);
+		if (r->h > s.h || (r->h == s.h && r->l >= s.l)) {
+			sub(r, r, &s);
+			if (n > 15)
+				q->h =| 1 << (n - 16);
+			else
+				q->l =| 1 << n;
+		}
+	}
+	return q->l;
+}
+sub(d, a, b)
+struct {char *h, *l;} *d, *a, *b;
+
+{
+	if (b->l > a->l) {
+		d->h = a->h - b->h - 1;
+		d->l = ~(b->l - a->l) + 1;
+	} else {
+		d->l = a->l - b->l;
+		d->h = a->h - b->h;
+	}
 }

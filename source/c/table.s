@@ -568,7 +568,7 @@ cr74:
 	movB1	*2(sp),R
 	sxt	R-
 	div	(sp)+,R-
-	mov	R,*(sp)+
+	movB1	R,*(sp)+
 
 / =^ -- =xor
 cr79:

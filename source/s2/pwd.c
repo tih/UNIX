@@ -1,61 +1,79 @@
-char dot[] ".";
-char dotdot[] "..";
-char root[] "/";
-char name[512];
-int file, off -1;
-struct statb {int devn, inum, i[18];}x;
-struct entry { int jnum; char name[16];}y;
+struct {
+	int d_inum;
+	char d_name[16];	/* need trailing zero */
+} dbuf;
 
-main() {
-	int n;
+struct {
+	int s_dev;
+	int s_inum;
+	int fill[16];
+} sbufp, sbufc, sbufr;
 
-loop0:
-	stat(dot, &x);
-	if((file = open(dotdot,0)) < 0) prname();
-loop1:
-	if((n = read(file,&y,16)) < 16) prname();
-	if(y.jnum != x.inum)goto loop1;
-	close(file);
-	if(y.jnum == 1) ckroot();
-	cat();
-	chdir(dotdot);
-	goto loop0;
+int fd;
+int fdout 1;
+int cc;			/* component counter */
+
+main()
+{
+
+	stat("", &sbufc);
+	prnam();
+	if (fdout == 2)
+		write(fdout, "/.\n", 3);
+	else
+		write(fdout, "\n", 1);
+	exit(--fdout);
 }
-ckroot() {
-	int i, n;
 
-	if((n = stat(y.name,&x)) < 0) prname();
-	i = x.devn;
-	if((n = chdir(root)) < 0) prname();
-	if((file = open(root,0)) < 0) prname();
-loop:
-	if((n = read(file,&y,16)) < 16) prname();
-	if(y.jnum == 0) goto loop;
-	if((n = stat(y.name,&x)) < 0) prname();
-	if(x.devn != i) goto loop;
-	x.i[0] =& 060000;
-	if(x.i[0] != 040000) goto loop;
-	if(y.name[0]=='.')if(((y.name[1]=='.') && (y.name[2]==0)) ||
-				(y.name[1] == 0)) goto pr;
-	cat();
-pr:
-	write(1,root,1);
-	prname();
-}
-prname() {
-	if(off<0)off=0;
-	name[off] = '\n';
-	write(1,name,off+1);
-	exit();
-}
-cat() {
-	int i, j;
+prnam()
+{
+	char name[16];
+	register char *np, *dp;
 
-	i = -1;
-	while(y.name[++i] != 0);
-	if((off+i+2) > 511) prname();
-	for(j=off+1; j>=0; --j) name[j+i+1] = name[j];
-	off=i+off+1;
-	name[i] = root[0];
-	for(--i; i>=0; --i) name[i] = y.name[i];
+	if (chdir("..") != 0) {
+		fdout = 2;
+		write(fdout, "cannot chdir to parent of ?", 27);
+		return;
+	}
+	fd = open("", 0);
+	if (fd < 0) {
+		fdout = 2;
+		write(fdout, "cannot read parent of ?", 23);
+		return;
+	}
+	fstat(fd, &sbufp);
+	if (sbufc.s_inum == sbufp.s_inum && sbufc.s_dev == sbufp.s_dev) {
+		if (cc == 0)
+			write(fdout, "/", 1);
+		return;
+	}
+
+	seek(fd, 32, 0);
+	if (sbufc.s_dev == sbufp.s_dev) {
+		do
+			read(fd, &dbuf, 16);
+		while(dbuf.d_inum != sbufc.s_inum);
+	} else
+		for (;;) {
+			read(fd, &dbuf, 16);
+			if (dbuf.d_inum) {
+				stat(dbuf.d_name, &sbufr);
+				if (sbufr.s_inum == sbufc.s_inum &&
+				    sbufr.s_dev == sbufc.s_dev)
+					break;
+			}
+		}
+	dp = dbuf.d_name;
+	np = name;
+	while (*np++ = *dp++)
+		;
+
+	close(fd);
+	cc++;
+	sbufc.s_inum = sbufp.s_inum;
+	sbufc.s_dev = sbufp.s_dev;
+	prnam();
+	write(fdout, "/", 1);
+	for (np = name; *np; np++)
+		write(fdout, np, 1);
 }
