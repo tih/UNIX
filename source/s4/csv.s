@@ -1,4 +1,4 @@
-/ C register save and restore -- version 12/74
+/ C register save and restore -- version 7/75
 
 .globl	csv
 .globl	cret
@@ -9,14 +9,13 @@ csv:
 	mov	r4,-(sp)
 	mov	r3,-(sp)
 	mov	r2,-(sp)
-	tst	-(sp)
-	jmp	(r0)
+	jsr	pc,(r0)		/ jsr part is sub $2,sp
 
 cret:
-	mov	r5,r1
-	mov	-(r1),r4
-	mov	-(r1),r3
-	mov	-(r1),r2
+	mov	r5,r2
+	mov	-(r2),r4
+	mov	-(r2),r3
+	mov	-(r2),r2
 	mov	r5,sp
 	mov	(sp)+,r5
 	rts	pc

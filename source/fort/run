@@ -160,5 +160,5 @@ as nice.s; mv a.out nice.o
 as rand.s; mv a.out rand.o
 as setfil.s; mv a.out setfil.o
 as uio.s; mv a.out uio.o
-ar r /lib/libf.a
+ar r /lib/libf.a *.o
 rm *.o

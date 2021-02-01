@@ -1,0 +1,7 @@
+/bin/as -o as1.o as1?.s
+/bin/as -o as2.o as2?.s
+ld -o as1 -s as1.o
+ld -o as2 -s as2.o
+: cp as1 /bin/as
+: cp as2 /lib/as2
+: rm *.o

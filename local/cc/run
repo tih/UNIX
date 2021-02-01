@@ -1,0 +1,15 @@
+cc -o c0 -s -O c0*.c
+cc -o cvopt cvopt.c
+cvopt table.s table.i
+as -o table.o table.i
+cc -c -O c1*.c
+cc -o c1 -s c1*.o table.o
+cc -o c2 -s -O c2*.c
+: rm -f /lib/c0 /lib/c1 /lib/c2
+: cpall c0 c1 c2 /lib
+: rm -f /lib/fc0 /lib/fc1
+: ln /lib/c0 /lib/fc0
+: ln /lib/c1 /lib/fc1
+cc -s -O -o cc cc.c
+: rm -f /bin/cc
+: cp cc /bin

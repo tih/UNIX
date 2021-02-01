@@ -20,5 +20,5 @@ as sin.s; mv a.out sin.o
 as sqrt.s; mv a.out sqrt.o
 as switch.s; mv a.out switch.o
 as ttyn.s; mv a.out ttyn.o
-ar r /lib/liba.a
+ar r /lib/liba.a *.o
 rm *.o

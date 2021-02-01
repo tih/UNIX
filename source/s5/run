@@ -34,7 +34,7 @@ as umount.s; mv a.out umount.o
 as unlink.s; mv a.out unlink.o
 as wait.s; mv a.out wait.o
 as write.s; mv a.out write.o
-cc -c -O mon.c perror.c qsort.c
+cc -c -O mktemp.c mon.c perror.c qsort.c
 cc -c -f -O rin.c
-ar r /lib/libc.a
+ar r /lib/libc.a *.o
 rm *.o

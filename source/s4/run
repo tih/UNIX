@@ -31,12 +31,15 @@ as getpid.s; mv a.out getpid.o
 as getuid.s; mv a.out getuid.o
 as gtty.s; mv a.out gtty.o
 as hmul.s; mv a.out hmul.o
+as itol.s; mv a.out itol.o
 as kill.s; mv a.out kill.o
 as ladd.s; mv a.out ladd.o
 as ldfps.s; mv a.out ldfps.o
 as link.s; mv a.out link.o
 as locv.s; mv a.out locv.o
+as longops.s; mv a.out longops.s
+: as longops-fp.s; mv a.out longops-fp.s
 as ltod.s; mv a.out ltod.o
 cc -c -O *.c
-ar r /lib/libc.a
+ar r /lib/libc.a *.o
 rm *.o
