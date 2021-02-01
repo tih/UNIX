@@ -14,6 +14,7 @@ char	*btab[]
 	"hs",
 	"hp",
 	"ht",
+	"ra",
 	0
 };
 char	*ctab[]
@@ -34,6 +35,7 @@ char	*ctab[]
 	"hs",
 	"hp",
 	"ht",
+	"ra",
 	0
 };
 struct tab
@@ -98,7 +100,19 @@ struct tab
  * 134 AFC11
  * 140 AA11
  * 144 AA11
- * 150-174 unused
+ * 150 unused
+ */
+
+	"ra",
+	0,	154,	BLOCK+CHAR+INTR,
+	"\traio; br5\n",
+	".globl\t_raintr\n",
+	"raio:\tjsr\tr0,call; _raintr\n",
+	"\t&raopen,\t&nulldev,\t&rastrategy, \t&ratab,",
+	"\t&raopen,  &nulldev,  &raread,   &rawrite,  &nodev,",
+
+/*
+ * 160-174 unused
  */
 
 	"lp",
@@ -302,6 +316,11 @@ char	*stra[]
 	".globl\tstart, dump",
 	"1:\tjmp\tstart",
 	"\tjmp\tdump",
+	"",
+	". = 50^.",
+	".globl\t_SW",
+	"_SW:\tmemcsw",
+	"memcsw:\t173020",
 	"",
 	0,
 };

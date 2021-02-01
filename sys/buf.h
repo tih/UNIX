@@ -29,7 +29,7 @@ struct buf
 	int	b_wcount;		/* transfer count (usu. words) */
 	char	*b_addr;		/* low order core address */
 	char	*b_xmem;		/* high order core address */
-	char	*b_blkno;		/* block # on device */
+	unsigned b_blkno;		/* block # on device */
 	char	b_error;		/* returned after I/O */
 	char	*b_resid;		/* words not transferred after error */
 } buf[NBUF];

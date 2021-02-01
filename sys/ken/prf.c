@@ -97,8 +97,10 @@ putchar(c)
 	KL->xbr = rc;
 	if(rc == '\n') {
 		putchar('\r');
+#ifdef SLOCON
 		putchar(0177);
 		putchar(0177);
+#endif
 	}
 	putchar(0);
 	KL->xsr = s;

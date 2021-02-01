@@ -7,7 +7,7 @@
 #define	NFILE	100		/* number of in core file structures */
 #define	NMOUNT	5		/* number of mountable file systems */
 #define	NEXEC	3		/* number of simultaneous exec's */
-#define	MAXMEM	(64*32)		/* max core per process - first # is Kw */
+#define	MAXMEM	(32*32)		/* max core per process - first # is Kw */
 #define	SSIZE	20		/* initial stack size (*64 bytes) */
 #define	SINCR	20		/* increment of stack (*64 bytes) */
 #define	NOFILE	15		/* max open files per process */
@@ -18,7 +18,8 @@
 #define	NPROC	50		/* max number of processes */
 #define	NTEXT	40		/* max number of pure texts */
 #define	NCLIST	100		/* max total clist size */
-#define	HZ	60		/* Ticks/second of the clock */
+#define	HZ	50		/* Ticks/second of the clock */
+/* #define SLOCON  1		/* if console needs pause after cr/lf */
 
 /*
  * priorities
@@ -88,4 +89,9 @@ struct
  */
 #define PS	0177776
 #define KL	0177560
-#define SW	0177570
+#define SWREG	0177570
+
+/*
+ * Used to fake the switch register on 11/23
+ */
+extern int	*SW;

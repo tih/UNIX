@@ -9,6 +9,7 @@
 
 #define	CLOCK1	0177546
 #define	CLOCK2	0172540
+
 /*
  * Icode is the octal bootstrap
  * program executed in user mode
@@ -48,31 +49,44 @@ int	icode[]
  */
 main()
 {
-	extern schar;
-	register i, *p;
+	register i, l;
+
+	updlock = 0;
+	printf("\nUNIX V6 11/%d\n", cputype);
 
 	/*
 	 * zero and free all of core
 	 */
 
-	updlock = 0;
-	i = *ka6 + USIZE;
+	switch (cputype) {
+	case 23:
+		l = 0177600;
+		break;
+	case 70:
+		l = 0170000;
+		break;
+	case 34:
+	case 40:
+	case 45:
+	default:
+		l = 07600;
+	}
 	UISD->r[0] = 077406;
-	for(;;) {
+	for(i = *ka6 + USIZE; i != l; i++) {
 		UISA->r[0] = i;
 		if(fuibyte(0) < 0)
 			break;
 		clearseg(i);
 		maxmem++;
 		mfree(coremap, 1, i);
-		i++;
 	}
-	if(cputype == 70)
-	for(i=0; i<62; i=+2) {
-		UBMAP->r[i] = i<<12;
-		UBMAP->r[i+1] = 0;
+	if(cputype == 70) {
+		for(i=0; i<62; i=+2) {
+			UBMAP->r[i] = i<<12;
+			UBMAP->r[i+1] = 0;
+		}
 	}
-	printf("mem = %l\n", maxmem*5/16);
+	printf("mem = %l KW\n", maxmem/32);
 	maxmem = min(maxmem, MAXMEM);
 	mfree(swapmap, nswap, swplo);
 
@@ -85,9 +99,21 @@ main()
 	lks = CLOCK1;
 	if(fuiword(lks) == -1) {
 		lks = CLOCK2;
-		if(fuiword(lks) == -1)
-			panic("no clock");
+		if (fuiword(lks) == -1) {
+			if (cputype == 23) {
+				printf("start LTC now\n");
+			} else {
+				panic("no clock");
+			}
+		}
 	}
+
+	/*
+	 * emulate switch register, if needed
+	 */
+
+	if (fuiword(SWREG) != -1)
+		SW = SWREG;
 
 	/*
 	 * set up system process
@@ -103,7 +129,8 @@ main()
 	 * set up 'known' i-nodes
 	 */
 
-	*lks = 0115;
+	if (lks)
+		*lks = 0115;
 	cinit();
 	binit();
 	iinit();
@@ -144,7 +171,7 @@ sureg()
 	a = u.u_procp->p_addr;
 	up = &u.u_uisa[16];
 	rp = &UISA->r[16];
-	if(cputype == 40) {
+	if(cputype <= 40) {
 		up =- 8;
 		rp =- 8;
 	}
@@ -154,7 +181,7 @@ sureg()
 		a =- up->x_caddr;
 	up = &u.u_uisd[16];
 	rp = &UISD->r[16];
-	if(cputype == 40) {
+	if(cputype <= 40) {
 		up =- 8;
 		rp =- 8;
 	}
@@ -179,7 +206,7 @@ estabur(nt, nd, ns, sep)
 	register a, *ap, *dp;
 
 	if(sep) {
-		if(cputype == 40)
+		if(cputype <= 40)
 			goto err;
 		if(nseg(nt) > 8 || nseg(nd)+nseg(ns) > 8)
 			goto err;

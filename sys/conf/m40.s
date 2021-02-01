@@ -8,6 +8,70 @@ wait	= 1
 rtt	= 6
 reset	= 5
 
+.globl	start, _end, _edata, _main
+start:
+	bit	$1,SSR0
+	bne	start			/ loop if restart
+	reset
+	clr	PS
+
+/ initialize systems segments
+
+	mov	$KISA0,r0
+	mov	$KISD0,r1
+	mov	$200,r4
+	clr	r2
+	mov	$6,r3
+1:
+	mov	r2,(r0)+
+	mov	$77406,(r1)+		/ 4k rw
+	add	r4,r2
+	sob	r3,1b
+
+/ initialize user segment
+
+	mov	$_end+63.,r2
+	ash	$-6,r2
+	bic	$!1777,r2
+	mov	r2,(r0)+		/ ksr6 = sysu
+	mov	$usize-1\<8|6,(r1)+
+
+/ initialize io segment
+/ set up counts on supervisor segments
+
+	mov	$IO,(r0)+
+	mov	$77406,(r1)+		/ rw 4k
+
+/ get a sp and start segmentation
+
+	mov	$_u+[usize*64.],sp
+	inc	SSR0
+
+/ clear bss
+
+	mov	$_edata,r0
+1:
+	clr	(r0)+
+	cmp	r0,$_end
+	blo	1b
+
+/ clear user block
+
+	mov	$_u,r0
+1:
+	clr	(r0)+
+	cmp	r0,$_u+[usize*64.]
+	blo	1b
+
+/ set up previous mode and call main
+/ on return, enter user mode at 0R
+
+	mov	$30000,PS
+	jsr	pc,_main
+	mov	$170000,-(sp)
+	clr	-(sp)
+	rtt
+
 .globl	trap, call
 .globl	_trap
 trap:
@@ -23,6 +87,45 @@ trap:
 	mov	$1,SSR0
 	mov	nofault,(sp)
 	rtt
+
+.globl	dump
+dump:
+	bit	$1,SSR0
+	bne	dump
+
+/ save regs r0,r1,r2,r3,r4,r5,r6,KIA6
+/ starting at abs location 4
+
+	mov	r0,4
+	mov	$6,r0
+	mov	r1,(r0)+
+	mov	r2,(r0)+
+	mov	r3,(r0)+
+	mov	r4,(r0)+
+	mov	r5,(r0)+
+	mov	sp,(r0)+
+	mov	KISA6,(r0)+
+
+/ dump all of core (ie to first mt error)
+/ onto mag tape. (9 track or 7 track 'binary')
+
+	mov	$MTC,r0
+	mov	$60004,(r0)+
+	clr	2(r0)
+1:
+	mov	$-512.,(r0)
+	inc	-(r0)
+2:
+	tstb	(r0)
+	bge	2b
+	tst	(r0)+
+	bge	1b
+	reset
+
+/ end of file and loop
+
+	mov	$60007,-(r0)
+	br	.
 
 .globl	_runrun, _swtch
 call1:
@@ -665,108 +768,6 @@ _dpcmp:
 	mov	r1,r0
 	rts	pc
 
-.globl	dump
-dump:
-	bit	$1,SSR0
-	bne	dump
-
-/ save regs r0,r1,r2,r3,r4,r5,r6,KIA6
-/ starting at abs location 4
-
-	mov	r0,4
-	mov	$6,r0
-	mov	r1,(r0)+
-	mov	r2,(r0)+
-	mov	r3,(r0)+
-	mov	r4,(r0)+
-	mov	r5,(r0)+
-	mov	sp,(r0)+
-	mov	KISA6,(r0)+
-
-/ dump all of core (ie to first mt error)
-/ onto mag tape. (9 track or 7 track 'binary')
-
-	mov	$MTC,r0
-	mov	$60004,(r0)+
-	clr	2(r0)
-1:
-	mov	$-512.,(r0)
-	inc	-(r0)
-2:
-	tstb	(r0)
-	bge	2b
-	tst	(r0)+
-	bge	1b
-	reset
-
-/ end of file and loop
-
-	mov	$60007,-(r0)
-	br	.
-
-.globl	start, _end, _edata, _main
-start:
-	bit	$1,SSR0
-	bne	start			/ loop if restart
-	reset
-
-/ initialize systems segments
-
-	mov	$KISA0,r0
-	mov	$KISD0,r1
-	mov	$200,r4
-	clr	r2
-	mov	$6,r3
-1:
-	mov	r2,(r0)+
-	mov	$77406,(r1)+		/ 4k rw
-	add	r4,r2
-	sob	r3,1b
-
-/ initialize user segment
-
-	mov	$_end+63.,r2
-	ash	$-6,r2
-	bic	$!1777,r2
-	mov	r2,(r0)+		/ ksr6 = sysu
-	mov	$usize-1\<8|6,(r1)+
-
-/ initialize io segment
-/ set up counts on supervisor segments
-
-	mov	$IO,(r0)+
-	mov	$77406,(r1)+		/ rw 4k
-
-/ get a sp and start segmentation
-
-	mov	$_u+[usize*64.],sp
-	inc	SSR0
-
-/ clear bss
-
-	mov	$_edata,r0
-1:
-	clr	(r0)+
-	cmp	r0,$_end
-	blo	1b
-
-/ clear user block
-
-	mov	$_u,r0
-1:
-	clr	(r0)+
-	cmp	r0,$_u+[usize*64.]
-	blo	1b
-
-/ set up previous mode and call main
-/ on return, enter user mode at 0R
-
-	mov	$30000,PS
-	jsr	pc,_main
-	mov	$170000,-(sp)
-	clr	-(sp)
-	rtt
-
 .globl	_ldiv
 _ldiv:
 	clr	r0
@@ -802,10 +803,10 @@ csv:
 
 .globl cret
 cret:
-	mov	r5,r1
-	mov	-(r1),r4
-	mov	-(r1),r3
-	mov	-(r1),r2
+	mov	r5,r2
+	mov	-(r2),r4
+	mov	-(r2),r3
+	mov	-(r2),r2
 	mov	r5,sp
 	mov	(sp)+,r5
 	rts	pc
@@ -814,6 +815,7 @@ cret:
 _u	= 140000
 usize	= 16.
 
+CSW	= 177570
 PS	= 177776
 SSR0	= 177572
 SSR2	= 177576

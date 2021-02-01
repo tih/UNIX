@@ -22,5 +22,5 @@ struct	filsys
 	char	s_fmod;		/* super block modified flag */
 	char	s_ronly;	/* mounted read-only flag */
 	int	s_time[2];	/* current date of last update */
-	int	pad[50];
+	int	pad[48];
 };

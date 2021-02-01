@@ -1,125 +1,70 @@
 / machine language assist
-/ for 11/45 or 11/70 CPUs
+/ for 11/23
 
 .fpp = 1
-
+	
 / non-UNIX instructions
 mfpi	= 6500^tst
 mtpi	= 6600^tst
-mfpd	= 106500^tst
-mtpd	= 106600^tst
-spl	= 230
-ldfps	= 170100^tst
-stfps	= 170200^tst
 wait	= 1
 rtt	= 6
 reset	= 5
 
-HIPRI	= 300
-HIGH	= 6
-
-.data
-.globl	start, _end, _edata, _etext, _main
-
-/ 11/45 and 11/70 startup.
-/ entry is thru 0 abs.
-/ since core is shuffled,
-/ this code can be executed but once
-
+.globl	start, _end, _edata, _main
 start:
-	inc	$-1
-	bne	.
+	bit	$1,SSR0
+	bne	start			/ loop if restart
 	reset
 	clr	PS
 
-/ set KI0 to physical 0
+/ initialize systems segments
 
-	mov	$77406,r3
 	mov	$KISA0,r0
 	mov	$KISD0,r1
-	clr	(r0)+
-	mov	r3,(r1)+
+	mov	$200,r4
+	clr	r2
+	mov	$6,r3
+1:
+	mov	r2,(r0)+
+	mov	$77406,(r1)+		/ 4k rw
+	add	r4,r2
+	sob	r3,1b
 
-/ set KI1-6 to eventual text resting place
+/ initialize user segment
 
 	mov	$_end+63.,r2
 	ash	$-6,r2
 	bic	$!1777,r2
-1:
-	mov	r2,(r0)+
-	mov	r3,(r1)+
-	add	$200,r2
-	cmp	r0,$KISA7
-	blos	1b
+	mov	r2,(r0)+		/ ksr6 = sysu
+	mov	$usize-1\<8|6,(r1)+
 
-/ set KI7 to IO seg for escape
+/ initialize io segment
+/ set up counts on supervisor segments
 
-	mov	$IO,-(r0)
+	mov	$IO,(r0)+
+	mov	$77406,(r1)+		/ rw 4k
 
-/ set KD0-7 to physical
-
-	mov	$KDSA0,r0
-	mov	$KDSD0,r1
-	clr	r2
-1:
-	mov	r2,(r0)+
-	mov	r3,(r1)+
-	add	$200,r2
-	cmp	r0,$KDSA7
-	blos	1b
-
-/ initialization
-/ get a temp (1-word) stack
-/ turn on segmentation
-/ copy text to I space
-/ clear bss in D space
-
-	mov	$stk+2,sp
-	mov	$65,SSR3		/ 22-bit, map, K+U sep
-	bit	$20,SSR3
-	beq	1f
-	mov	$70.,_cputype
-1:
-	inc	SSR0
-	mov	$_etext,r0
-	mov	$_edata,r1
-	add	$_etext-8192.,r1
-1:
-	mov	-(r1),-(sp)
-	mtpi	-(r0)
-	cmp	r1,$_edata
-	bhi	1b
-1:
-	clr	(r1)+
-	cmp	r1,$_end
-	blo	1b
-
-/ use KI escape to set KD7 to IO seg
-/ set KD6 to first available core
-
-	mov	$IO,-(sp)
-	mtpi	*$KDSA7
-	mov	$_etext-8192.+63.,r2
-	ash	$-6,r2
-	bic	$!1777,r2
-	add	KISA1,r2
-	mov	r2,KDSA6
-
-/ set up supervisor D registers
-
-	mov	$6,SISD0
-	mov	$6,SISD1
-
-/ set up real sp
-/ clear user block
+/ get a sp and start segmentation
 
 	mov	$_u+[usize*64.],sp
+	mov	$20,SSR3		/ 22-bit bus
+	inc	SSR0
+
+/ clear bss
+
+	mov	$_edata,r0
+1:
+	clr	(r0)+
+	cmp	r0,$_end
+	blo	1b
+
+/ clear user block
+
 	mov	$_u,r0
 1:
 	clr	(r0)+
-	cmp	r0,sp
+	cmp	r0,$_u+[usize*64.]
 	blo	1b
-/	jsr	pc,_isprof
 
 / set up previous mode and call main
 / on return, enter user mode at 0R
@@ -132,16 +77,11 @@ start:
 
 .globl	trap, call
 .globl	_trap
-
-/ all traps and interrupts are
-/ vectored thru this routine.
-
 trap:
-	mov	PS,saveps
+	mov	PS,-4(sp)
 	tst	nofault
 	bne	1f
 	mov	SSR0,ssr
-	mov	SSR1,ssr+2
 	mov	SSR2,ssr+4
 	mov	$1,SSR0
 	jsr	r0,call1; _trap
@@ -150,11 +90,6 @@ trap:
 	mov	$1,SSR0
 	mov	nofault,(sp)
 	rtt
-
-/ Mag tape dump
-/ save registers in low core and
-/ write all core onto mag tape.
-/ entry is thru 44 abs
 
 .globl	dump
 dump:
@@ -172,7 +107,7 @@ dump:
 	mov	r4,(r0)+
 	mov	r5,(r0)+
 	mov	sp,(r0)+
-	mov	KDSA6,(r0)+
+	mov	KISA6,(r0)+
 
 / dump all of core (ie to first mt error)
 / onto mag tape. (9 track or 7 track 'binary')
@@ -195,19 +130,17 @@ dump:
 	mov	$60007,-(r0)
 	br	.
 
-.text
-
 .globl	_runrun, _swtch
 call1:
-	mov	saveps,-(sp)
-	spl	0
+	tst	-(sp)
+	bic	$340,PS
 	br	1f
 
 call:
 	mov	PS,-(sp)
 1:
 	mov	r1,-(sp)
-	mfpd	sp
+	mfpi	sp
 	mov	4(sp),-(sp)
 	bic	$!37,(sp)
 	bit	$30000,PS
@@ -217,10 +150,10 @@ call:
 .endif
 	jsr	pc,*(r0)+
 2:
-	spl	HIGH
+	bis	$340,PS
 	tstb	_runrun
 	beq	2f
-	spl	0
+	bic	$340,PS
 	jsr	pc,_savfp
 	jsr	pc,_swtch
 	br	2b
@@ -243,7 +176,7 @@ call:
 2:
 .endif
 	tst	(sp)+
-	mtpd	sp
+	mtpi	sp
 	br	2f
 1:
 	bis	$30000,PS
@@ -274,6 +207,10 @@ _savfp:
 .endif
 	rts	pc
 
+.globl	_display
+_display:
+	rts	pc
+
 .globl	_incupc
 _incupc:
 	mov	r2,-(sp)
@@ -291,9 +228,9 @@ _incupc:
 	add	(r2),r1		/ base
 	mov	nofault,-(sp)
 	mov	$2f,nofault
-	mfpd	(r1)
+	mfpi	(r1)
 	inc	(sp)
-	mtpd	(r1)
+	mtpi	(r1)
 	br	3f
 2:
 	clr	6(r2)
@@ -301,28 +238,6 @@ _incupc:
 	mov	(sp)+,nofault
 1:
 	mov	(sp)+,r2
-	rts	pc
-
-.globl	_display
-_display:
-	dec	dispdly
-	bge	2f
-	clr	dispdly
-	mov	PS,-(sp)
-	mov	$HIPRI,PS
-	mov	CSW,r1
-	bit	$1,r1
-	beq	1f
-	bis	$30000,PS
-	dec	r1
-1:
-	jsr	pc,fuword
-	mov	r0,CSW
-	mov	(sp)+,PS
-	cmp	r0,$-1
-	bne	2f
-	mov	$120.,dispdly		/ 2 sec delay after CSW fault
-2:
 	rts	pc
 
 / Character list get/put
@@ -334,7 +249,8 @@ _getc:
 	mov	2(sp),r1
 	mov	PS,-(sp)
 	mov	r2,-(sp)
-	spl	5
+	bis	$340,PS
+	bic	$100,PS		/ spl 5
 	mov	2(r1),r2	/ first ptr
 	beq	9f		/ empty
 	movb	(r2)+,r0	/ character
@@ -372,7 +288,8 @@ _putc:
 	mov	PS,-(sp)
 	mov	r2,-(sp)
 	mov	r3,-(sp)
-	spl	5
+	bis	$340,PS
+	bic	$100,PS		/ spl 5
 	mov	4(r1),r2	/ last ptr
 	bne	1f
 	mov	_cfreelist,r2
@@ -409,6 +326,13 @@ _putc:
 .globl	_backup
 .globl	_regloc
 _backup:
+	mov	2(sp),ssr+2
+	mov	r2,-(sp)
+	jsr	pc,backup
+	mov	r2,ssr+2
+	mov	(sp)+,r2
+	movb	jflg,r0
+	bne	2f
 	mov	2(sp),r0
 	movb	ssr+2,r1
 	jsr	pc,1f
@@ -433,23 +357,213 @@ _backup:
 	sub	(sp)+,(r1)
 	rts	pc
 
+/ hard part
+/ simulate the ssr2 register missing on 11/40
+
+backup:
+	clr	r2		/ backup register ssr1
+	mov	$1,bflg		/ clrs jflg
+	mov	ssr+4,r0
+	jsr	pc,fetch
+	mov	r0,r1
+	ash	$-11.,r0
+	bic	$!36,r0
+	jmp	*0f(r0)
+0:		t00; t01; t02; t03; t04; t05; t06; t07
+		t10; t11; t12; t13; t14; t15; t16; t17
+
+t00:
+	clrb	bflg
+
+t10:
+	mov	r1,r0
+	swab	r0
+	bic	$!16,r0
+	jmp	*0f(r0)
+0:		u0; u1; u2; u3; u4; u5; u6; u7
+
+u6:	/ single op, m[tf]pi, sxt, illegal
+	bit	$400,r1
+	beq	u5		/ all but m[tf], sxt
+	bit	$200,r1
+	beq	1f		/ mfpi
+	bit	$100,r1
+	bne	u5		/ sxt
+
+/ simulate mtpi with double (sp)+,dd
+	bic	$4000,r1	/ turn instr into (sp)+
+	br	t01
+
+/ simulate mfpi with double ss,-(sp)
+1:
+	ash	$6,r1
+	bis	$46,r1		/ -(sp)
+	br	t01
+
+u4:	/ jsr
+	mov	r1,r0
+	jsr	pc,setreg	/ assume no fault
+	bis	$173000,r2	/ -2 from sp
+	rts	pc
+
+t07:	/ EIS
+	clrb	bflg
+
+u0:	/ jmp, swab
+u5:	/ single op
+	mov	r1,r0
+	br	setreg
+
+t01:	/ mov
+t02:	/ cmp
+t03:	/ bit
+t04:	/ bic
+t05:	/ bis
+t06:	/ add
+t16:	/ sub
+	clrb	bflg
+
+t11:	/ movb
+t12:	/ cmpb
+t13:	/ bitb
+t14:	/ bicb
+t15:	/ bisb
+	mov	r1,r0
+	ash	$-6,r0
+	jsr	pc,setreg
+	swab	r2
+	mov	r1,r0
+	jsr	pc,setreg
+
+/ if delta(dest) is zero,
+/ no need to fetch source
+
+	bit	$370,r2
+	beq	1f
+
+/ if mode(source) is R,
+/ no fault is possible
+
+	bit	$7000,r1
+	beq	1f
+
+/ if reg(source) is reg(dest),
+/ too bad.
+
+	mov	r2,-(sp)
+	bic	$174370,(sp)
+	cmpb	1(sp),(sp)+
+	beq	t17
+
+/ start source cycle
+/ pick up value of reg
+
+	mov	r1,r0
+	ash	$-6,r0
+	bic	$!7,r0
+	movb	_regloc(r0),r0
+	asl	r0
+	add	ssr+2,r0
+	mov	(r0),r0
+
+/ if reg has been incremented,
+/ must decrement it before fetch
+
+	bit	$174000,r2
+	ble	2f
+	dec	r0
+	bit	$10000,r2
+	beq	2f
+	dec	r0
+2:
+
+/ if mode is 6,7 fetch and add X(R) to R
+
+	bit	$4000,r1
+	beq	2f
+	bit	$2000,r1
+	beq	2f
+	mov	r0,-(sp)
+	mov	ssr+4,r0
+	add	$2,r0
+	jsr	pc,fetch
+	add	(sp)+,r0
+2:
+
+/ fetch operand
+/ if mode is 3,5,7 fetch *
+
+	jsr	pc,fetch
+	bit	$1000,r1
+	beq	1f
+	bit	$6000,r1
+	bne	fetch
+1:
+	rts	pc
+
+t17:	/ illegal
+u1:	/ br
+u2:	/ br
+u3:	/ br
+u7:	/ illegal
+	incb	jflg
+	rts	pc
+
+setreg:
+	mov	r0,-(sp)
+	bic	$!7,r0
+	bis	r0,r2
+	mov	(sp)+,r0
+	ash	$-3,r0
+	bic	$!7,r0
+	movb	0f(r0),r0
+	tstb	bflg
+	beq	1f
+	bit	$2,r2
+	beq	2f
+	bit	$4,r2
+	beq	2f
+1:
+	cmp	r0,$20
+	beq	2f
+	cmp	r0,$-20
+	beq	2f
+	asl	r0
+2:
+	bisb	r0,r2
+	rts	pc
+
+0:	.byte	0,0,10,20,-10,-20,0,0
+
+fetch:
+	bic	$1,r0
+	mov	nofault,-(sp)
+	mov	$1f,nofault
+	mfpi	(r0)
+	mov	(sp)+,r0
+	mov	(sp)+,nofault
+	rts	pc
+
+1:
+ 	mov	(sp)+,nofault
+	clrb	r2			/ clear out dest on fault
+	mov	$-1,r0
+	rts	pc
+
+.bss
+bflg:	.=.+1
+jflg:	.=.+1
+.text
 
 .globl	_fubyte, _subyte
 .globl	_fuibyte, _suibyte
 .globl	_fuword, _suword
 .globl	_fuiword, _suiword
 _fuibyte:
-	mov	2(sp),r1
-	bic	$1,r1
-	jsr	pc,giword
-	br	2f
-
 _fubyte:
 	mov	2(sp),r1
 	bic	$1,r1
 	jsr	pc,gword
-
-2:
 	cmp	r1,2(sp)
 	beq	1f
 	swab	r0
@@ -458,22 +572,6 @@ _fubyte:
 	rts	pc
 
 _suibyte:
-	mov	2(sp),r1
-	bic	$1,r1
-	jsr	pc,giword
-	mov	r0,-(sp)
-	cmp	r1,4(sp)
-	beq	1f
-	movb	6(sp),1(sp)
-	br	2f
-1:
-	movb	6(sp),(sp)
-2:
-	mov	(sp)+,r0
-	jsr	pc,piword
-	clr	r0
-	rts	pc
-
 _subyte:
 	mov	2(sp),r1
 	bic	$1,r1
@@ -492,42 +590,22 @@ _subyte:
 	rts	pc
 
 _fuiword:
-	mov	2(sp),r1
-fuiword:
-	jsr	pc,giword
-	rts	pc
-
 _fuword:
 	mov	2(sp),r1
 fuword:
 	jsr	pc,gword
 	rts	pc
 
-giword:
+gword:
 	mov	PS,-(sp)
-	spl	HIGH
+	bis	$340,PS
 	mov	nofault,-(sp)
 	mov	$err,nofault
 	mfpi	(r1)
 	mov	(sp)+,r0
 	br	1f
 
-gword:
-	mov	PS,-(sp)
-	spl	HIGH
-	mov	nofault,-(sp)
-	mov	$err,nofault
-	mfpd	(r1)
-	mov	(sp)+,r0
-	br	1f
-
 _suiword:
-	mov	2(sp),r1
-	mov	4(sp),r0
-suiword:
-	jsr	pc,piword
-	rts	pc
-
 _suword:
 	mov	2(sp),r1
 	mov	4(sp),r0
@@ -535,22 +613,13 @@ suword:
 	jsr	pc,pword
 	rts	pc
 
-piword:
+pword:
 	mov	PS,-(sp)
-	spl	HIGH
+	bis	$340,PS
 	mov	nofault,-(sp)
 	mov	$err,nofault
 	mov	r0,-(sp)
 	mtpi	(r1)
-	br	1f
-
-pword:
-	mov	PS,-(sp)
-	spl	HIGH
-	mov	nofault,-(sp)
-	mov	$err,nofault
-	mov	r0,-(sp)
-	mtpd	(r1)
 1:
 	mov	(sp)+,nofault
 	mov	(sp)+,PS
@@ -564,8 +633,7 @@ err:
 	rts	pc
 
 .globl	_copyin, _copyout
-.globl	_copyiin, _copyiout
-_copyiin:
+_copyin:
 	jsr	pc,copsu
 1:
 	mfpi	(r0)+
@@ -573,27 +641,11 @@ _copyiin:
 	sob	r2,1b
 	br	2f
 
-_copyin:
-	jsr	pc,copsu
-1:
-	mfpd	(r0)+
-	mov	(sp)+,(r1)+
-	sob	r2,1b
-	br	2f
-
-_copyiout:
-	jsr	pc,copsu
-1:
-	mov	(r0)+,-(sp)
-	mtpi	(r1)+
-	sob	r2,1b
-	br	2f
-
 _copyout:
 	jsr	pc,copsu
 1:
 	mov	(r0)+,-(sp)
-	mtpd	(r1)+
+	mtpi	(r1)+
 	sob	r2,1b
 2:
 	mov	(sp)+,nofault
@@ -622,92 +674,107 @@ copsu:
 .globl	_idle
 _idle:
 	mov	PS,-(sp)
-	spl	0
+	bic	$340,PS
 	wait
 	mov	(sp)+,PS
 	rts	pc
 
 .globl	_savu, _retu, _aretu
 _savu:
-	spl	HIGH
+	bis	$340,PS
 	mov	(sp)+,r1
 	mov	(sp),r0
 	mov	sp,(r0)+
 	mov	r5,(r0)+
-	spl	0
+	bic	$340,PS
 	jmp	(r1)
 
 _aretu:
-	spl	7
+	bis	$340,PS
 	mov	(sp)+,r1
 	mov	(sp),r0
 	br	1f
 
 _retu:
-	spl	7
+	bis	$340,PS
 	mov	(sp)+,r1
-	mov	(sp),KDSA6
+	mov	(sp),KISA6
 	mov	$_u,r0
 1:
 	mov	(r0)+,sp
 	mov	(r0)+,r5
-	spl	0
+	bic	$340,PS
 	jmp	(r1)
 
 .globl	_spl0, _spl1, _spl4, _spl5, _spl6, _spl7
 _spl0:
-	spl	0
+	bic	$340,PS
 	rts	pc
 
 _spl1:
-	spl	1
+	bis	$40,PS
+	bic	$300,PS
 	rts	pc
 
 _spl4:
-	spl	4
-	rts	pc
-
 _spl5:
-	spl	5
+	bis	$340,PS
+	bic	$100,PS
 	rts	pc
 
 _spl6:
-	spl	6
+	bis	$340,PS
+	bic	$40,PS
 	rts	pc
 
 _spl7:
-	spl	HIGH
+	bis	$340,PS
 	rts	pc
 
 .globl	_copyseg
 _copyseg:
 	mov	PS,-(sp)
-	mov	4(sp),SISA0
-	mov	6(sp),SISA1
-	mov	$10000+HIPRI,PS
+	mov	UISA0,-(sp)
+	mov	UISA1,-(sp)
+	mov	$30340,PS
+	mov	10(sp),UISA0
+	mov	12(sp),UISA1
+	mov	UISD0,-(sp)
+	mov	UISD1,-(sp)
+	mov	$6,UISD0
+	mov	$6,UISD1
 	mov	r2,-(sp)
 	clr	r0
 	mov	$8192.,r1
 	mov	$32.,r2
 1:
-	mfpd	(r0)+
-	mtpd	(r1)+
+	mfpi	(r0)+
+	mtpi	(r1)+
 	sob	r2,1b
 	mov	(sp)+,r2
+	mov	(sp)+,UISD1
+	mov	(sp)+,UISD0
+	mov	(sp)+,UISA1
+	mov	(sp)+,UISA0
 	mov	(sp)+,PS
 	rts	pc
 
 .globl	_clearseg
 _clearseg:
 	mov	PS,-(sp)
-	mov	4(sp),SISA0
-	mov	$10000+HIPRI,PS
+	mov	UISA0,-(sp)
+	mov	$30340,PS
+	mov	6(sp),UISA0
+	mov	UISD0,-(sp)
+	mov	$6,UISD0
 	clr	r0
 	mov	$32.,r1
 1:
 	clr	-(sp)
-	mtpd	(r0)+
+	mtpi	(r0)+
 	sob	r1,1b
+	mov	(sp)+,UISD0
+	mov	(sp)+,UISA0
 	mov	(sp)+,PS
 	rts	pc
 
@@ -793,35 +860,25 @@ usize	= 16.
 CSW	= 177570
 PS	= 177776
 SSR0	= 177572
-SSR1	= 177574
 SSR2	= 177576
 SSR3	= 172516
 KISA0	= 172340
-KISA1	= 172342
-KISA7	= 172356
+KISA6	= 172354
 KISD0	= 172300
-KDSA0	= 172360
-KDSA6	= 172374
-KDSA7	= 172376
-KDSD0	= 172320
 MTC	= 172522
-SISA0	= 172240
-SISA1	= 172242
-SISD0	= 172200
-SISD1	= 172202
+UISA0	= 177640
+UISA1	= 177642
+UISD0	= 177600
+UISD1	= 177602
 IO	= 177600
 
 .data
-.globl	_ka6
-.globl	_cputype
-
-_ka6:	KDSA6
-_cputype:45.
-stk:	0
+.globl	_ka6, _cputype
+_ka6:	KISA6
+_cputype:23.
 
 .bss
-.globl	nofault, ssr
+.globl	nofault, ssr, badtrap
 nofault:.=.+2
 ssr:	.=.+6
-dispdly:.=.+2
-saveps:	.=.+2
+badtrap:.=.+2

@@ -1,22 +1,45 @@
 chdir ken
 cc -c -O *.c
-ar r ../lib1
+ar r ../lib1 *.o
 rm *.o
 
 chdir ../dmr
 cc -c -O *.c
-ar r ../lib2
+ar r ../lib2 *.o
 rm *.o
 
 chdir ../conf
+as m23.s
+mv a.out m23.o
+as m34.s
+mv a.out m34.o
 as m40.s
 mv a.out m40.o
-: as m45.s
-: mv a.out m45.o
-: cc sysfix.c
-: mv a.out sysfix
+as m45.s
+mv a.out m45.o
+cc sysfix.c
+mv a.out sysfix
 cc mkconf.c
 mv a.out mkconf
+
+mkconf
+ra
+tm
+tc
+done
+
+ed c.c
+$-2s/0}/2}/
+$-1s/4000/1/
+$s/872/3099/
+w
+q
+
+cc -c c.c
+as l.s
+ld -x a.out m23.o c.o ../lib1 ../lib2
+cmp a.out /raunix
+cp a.out /raunix
 
 mkconf
 rk
@@ -69,5 +92,4 @@ ld -x a.out m40.o c.o ../lib1 ../lib2
 cmp a.out /hpunix
 cp a.out /hpunix
 
-rm mkconf c.c l.s a.out *.o
-: rm sysfix
+rm mkconf sysfix c.c l.s a.out *.o

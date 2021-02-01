@@ -1,1 +1,5 @@
-This is UNIX 6th Edition source, as supplied to TUHS by Dennis Ritchie.
+This is UNIX 6th Edition source, as modified by tih.
+It will run on MicroPDP-11 systems with MSCP disk controllers.
+It needs a newer C compiler, e.g. the one from PWB.
+
+For current status, see my notes on https://www.hamartun.priv.no/
